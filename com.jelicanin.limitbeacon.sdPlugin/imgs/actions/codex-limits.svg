@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144" role="img" aria-label="LimitBeacon">
+  <rect width="144" height="144" rx="20" fill="#071827"/>
+  <g aria-label="Five-hour meter">
+    <circle cx="21" cy="42" r="5" fill="#50d5ff"/>
+    <rect x="33" y="37" width="88" height="10" rx="5" class="meter-track" fill="#233743"/>
+    <rect x="33" y="37" width="67" height="10" rx="5" fill="#50d5ff"/>
+  </g>
+  <g aria-label="Weekly meter">
+    <circle cx="21" cy="91" r="5" fill="#f2b84b"/>
+    <rect x="33" y="86" width="88" height="10" rx="5" class="meter-track" fill="#233743"/>
+    <rect x="33" y="86" width="40" height="10" rx="5" fill="#f2b84b"/>
+  </g>
+</svg>

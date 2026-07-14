@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "Actions": [
+    {
+      "Icon": "imgs/actions/codex-limits-icon",
+      "Name": "Codex Limits",
+      "PropertyInspectorPath": "ui/index.html",
+      "States": [
+        {
+          "Image": "imgs/actions/codex-limits"
+        }
+      ],
+      "UUID": "com.jelicanin.limitbeacon.codex-limits",
+      "UserTitleEnabled": false
+    }
+  ],
+  "Author": "Milan Jelicanin",
+  "Category": "LimitBeacon",
+  "CategoryIcon": "imgs/category",
+  "CodePath": "bin/plugin.js",
+  "Description": "Monitor Codex AI usage limits from Stream Deck.",
+  "Icon": "imgs/plugin",
+  "Name": "LimitBeacon",
+  "Nodejs": {
+    "Version": "24"
+  },
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "13"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "SDKVersion": 3,
+  "Software": {
+    "MinimumVersion": "7.1"
+  },
+  "UUID": "com.jelicanin.limitbeacon",
+  "Version": "0.1.0.0"
+}

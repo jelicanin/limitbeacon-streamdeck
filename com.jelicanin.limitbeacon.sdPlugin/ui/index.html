@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LimitBeacon Settings</title>
+    <link rel="stylesheet" href="index.css" />
+  </head>
+  <body>
+    <main>
+      <nav class="tabs" role="tablist" aria-label="LimitBeacon settings">
+        <button id="general-tab" type="button" role="tab" aria-selected="true" aria-controls="general-panel">General</button>
+        <button id="advanced-tab" type="button" role="tab" aria-selected="false" aria-controls="advanced-panel">Advanced</button>
+        <button id="help-tab" type="button" role="tab" aria-selected="false" aria-controls="help-panel">Help</button>
+      </nav>
+
+      <form id="settings-form">
+        <section id="general-panel" class="tab-panel" role="tabpanel" aria-labelledby="general-tab">
+          <div class="status" aria-live="polite">
+            <span class="status-dot" aria-hidden="true"></span>
+            <div>
+              <strong id="status-title">Codex is starting</strong>
+              <p id="status-detail">The first connection may take a moment.</p>
+              <div id="status-action"></div>
+            </div>
+          </div>
+
+          <fieldset>
+            <legend>Display</legend>
+            <label><span>Value</span>
+              <select name="basis">
+                <option value="remaining">Remaining</option>
+                <option value="used">Used</option>
+              </select>
+            </label>
+            <label><span>Reset time</span>
+              <select name="resetStyle">
+                <option value="countdown">Countdown</option>
+                <option value="local-time">Local date and time</option>
+              </select>
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Alerts</legend>
+            <label><span>Warning at remaining %</span>
+              <input name="warningThreshold" type="number" min="0" max="100" step="1" value="35" />
+            </label>
+            <label><span>Critical at remaining %</span>
+              <input name="criticalThreshold" type="number" min="0" max="100" step="1" value="15" />
+            </label>
+            <p class="error" id="threshold-error" hidden>Critical must not be higher than warning.</p>
+          </fieldset>
+        </section>
+
+        <section id="advanced-panel" class="tab-panel" role="tabpanel" aria-labelledby="advanced-tab" hidden>
+          <fieldset>
+            <legend>Connection</legend>
+            <label><span>Refresh interval</span>
+              <select name="refreshMinutes">
+                <option value="1">1 minute</option>
+                <option value="5" selected>5 minutes</option>
+                <option value="15">15 minutes</option>
+                <option value="30">30 minutes</option>
+                <option value="60">60 minutes</option>
+              </select>
+            </label>
+            <label><span>Codex executable override</span>
+              <input name="codexExecutable" type="text" autocomplete="off" placeholder="Automatic" />
+            </label>
+            <p class="help">Leave blank unless Codex cannot be found automatically.</p>
+          </fieldset>
+
+        </section>
+
+        <section id="help-panel" class="tab-panel" role="tabpanel" aria-labelledby="help-tab" hidden>
+          <fieldset>
+            <legend>Get started</legend>
+            <ol class="setup-steps">
+              <li>
+                <strong>Install Codex</strong>
+                <span>Install the official Codex CLI.</span>
+                <a href="https://developers.openai.com/codex/cli/" data-open-url>Open install guide</a>
+              </li>
+              <li>
+                <strong>Sign in to Codex</strong>
+                <span>Open Codex and complete the official sign-in.</span>
+                <a href="https://developers.openai.com/codex/auth/" data-open-url>Open sign-in guide</a>
+              </li>
+              <li>
+                <strong>Return to Stream Deck</strong>
+                <span>LimitBeacon connects automatically. Use Refresh now on the General tab if needed.</span>
+              </li>
+            </ol>
+          </fieldset>
+
+          <p class="privacy-note">LimitBeacon reads rate limits through the local Codex App Server. It never reads your credentials.</p>
+        </section>
+      </form>
+    </main>
+    <script src="index.js"></script>
+  </body>
+</html>

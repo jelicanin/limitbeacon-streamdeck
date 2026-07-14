@@ -1,0 +1,7 @@
+{
+  "rateLimits": {
+    "primary": {
+      "windowDurationMins": "five hours"
+    }
+  }
+}
