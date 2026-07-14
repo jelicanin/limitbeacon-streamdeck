@@ -51,7 +51,9 @@ jobs:
         ./
       upload-sarif: false
     permissions:
+      actions: read
       contents: read
+      security-events: write
 
   gitleaks:
     name: Gitleaks secret scan
