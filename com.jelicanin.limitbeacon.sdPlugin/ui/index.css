@@ -56,6 +56,16 @@ main { width: 100%; max-width: 100%; padding: 10px 12px 12px; overflow: hidden; 
 .status[data-tone="error"] .status-dot { background: #f06b63; }
 .status p { margin: 1px 0 5px; color: #b7c0c8; }
 
+.specialized-guide {
+  padding: 12px;
+  border: 1px solid #494949;
+  border-radius: 7px;
+  background: #292929;
+}
+
+.specialized-guide strong { color: #e7ecef; }
+.specialized-guide p, .help-copy { margin: 5px 0 0; color: #b7c0c8; }
+
 fieldset { padding: 0; margin: 0 0 13px; border: 0; }
 legend { margin-bottom: 8px; font-weight: 700; color: #dce3e8; }
 
@@ -78,6 +88,62 @@ input, select, .status button, .action-link {
   color: #f5f7f8;
   background: #202124;
   font: inherit;
+}
+
+.radio-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(128px, 1.15fr);
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: #cbd3d9;
+}
+
+.radio-group {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+  min-width: 0;
+  padding: 2px;
+  border: 1px solid #575b5f;
+  border-radius: 6px;
+  background: #202124;
+}
+
+.radio-option {
+  display: block;
+  margin: 0;
+  color: #bfc8ce;
+  cursor: pointer;
+}
+
+.radio-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.radio-option span {
+  display: grid;
+  min-height: 26px;
+  place-items: center;
+  padding: 3px 7px;
+  border-radius: 4px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.radio-option input:checked + span {
+  color: #f6f8f9;
+  background: #414141;
+}
+
+.radio-option input:focus-visible + span {
+  outline: 2px solid #39d0c3;
+  outline-offset: 1px;
 }
 
 input, select { padding: 4px 7px; }
@@ -152,5 +218,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, .action-link:fo
 
 @media (max-width: 380px) {
   label { grid-template-columns: 1fr; gap: 4px; }
+  .radio-setting { grid-template-columns: 1fr; gap: 4px; }
   main { padding-inline: 10px; }
 }

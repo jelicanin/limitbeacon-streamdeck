@@ -3,6 +3,7 @@ export type Severity = "healthy" | "warning" | "critical";
 export type UsageKeyViewModel = {
   type: "usage";
   basis: "remaining" | "used";
+  displayStyle: "bars" | "rings";
   stale: boolean;
   fiveHour: UsageRow;
   weekly: UsageRow | null;
@@ -43,6 +44,8 @@ export function renderKey(model: KeyViewModel): string {
 }
 
 function renderUsage(model: UsageKeyViewModel): string {
+  if (model.displayStyle === "rings") return renderRingUsage(model);
+
   const basis = model.basis === "remaining" ? "LEFT" : "USED";
   const rows = model.weekly
     ? `${renderRow(model.fiveHour, basis, -2, 58)}${renderRow(model.weekly, basis, 78, 144)}`
@@ -52,6 +55,40 @@ function renderUsage(model: UsageKeyViewModel): string {
     ${model.stale ? '<text x="132" y="15" class="stale">STALE</text>' : ""}
     ${rows}
   `);
+}
+
+function renderRingUsage(model: UsageKeyViewModel): string {
+  const basis = model.basis === "remaining" ? "LEFT" : "USED";
+  const rings = model.weekly === null
+    ? renderSingleRing(model.fiveHour, basis)
+    : `${renderRing(model.fiveHour, basis, 38)}${renderRing(model.weekly, basis, 106)}`;
+
+  return svg(`
+    ${model.stale ? '<text x="132" y="15" class="stale">STALE</text>' : ""}
+    ${rings}
+  `);
+}
+
+function renderRing(row: UsageRow, basis: string, x: number): string {
+  const color = colors[row.severity];
+  return `
+    <text x="${x}" y="15" class="ring-label">${escapeXml(row.label)} · ${basis}</text>
+    <circle cx="${x}" cy="61" r="25" class="ring-track"/>
+    <circle cx="${x}" cy="61" r="25" class="ring-fill" stroke="${color}" stroke-dasharray="${ringDash(row.percent, 25)} 999" transform="rotate(-90 ${x} 61)"/>
+    <text x="${x}" y="68" class="ring-value" fill="${color}">${formatPercent(row.percent)}</text>
+    <text x="${x}" y="135" class="ring-reset">${escapeXml(row.reset ?? "No reset")}</text>
+  `;
+}
+
+function renderSingleRing(row: UsageRow, basis: string): string {
+  const color = colors[row.severity];
+  return `
+    <text x="72" y="17" class="single-ring-label">${escapeXml(row.label)} · ${basis}</text>
+    <circle cx="72" cy="67" r="38" class="ring-track"/>
+    <circle cx="72" cy="67" r="38" class="ring-fill" stroke="${color}" stroke-dasharray="${ringDash(row.percent, 38)} 999" transform="rotate(-90 72 67)"/>
+    <text x="72" y="77" class="single-ring-value" fill="${color}">${formatPercent(row.percent)}</text>
+    <text x="72" y="136" class="single-ring-reset">${escapeXml(row.reset ?? "No reset")}</text>
+  `;
 }
 
 function renderRow(row: UsageRow, basis: string, y: number, resetY: number): string {
@@ -109,6 +146,15 @@ function svg(content: string): string {
     .single-label { fill: #A9C0CF; font-size: 18px; font-weight: 700; text-anchor: middle; }
     .single-value { font-size: 42px; font-weight: 800; text-anchor: middle; }
     .single-reset { fill: #A9BBC7; font-size: 18px; font-weight: 600; text-anchor: middle; }
+    .ring-track, .ring-fill { fill: none; stroke-width: 7; }
+    .ring-track { stroke: #233743; }
+    .ring-fill { stroke-linecap: round; }
+    .ring-label { fill: #A9C0CF; font-size: 11px; font-weight: 700; text-anchor: middle; }
+    .ring-value { font-size: 21px; font-weight: 800; text-anchor: middle; }
+    .ring-reset { fill: #A9BBC7; font-size: 12px; font-weight: 600; text-anchor: middle; }
+    .single-ring-label { fill: #A9C0CF; font-size: 16px; font-weight: 700; text-anchor: middle; }
+    .single-ring-value { font-size: 31px; font-weight: 800; text-anchor: middle; }
+    .single-ring-reset { fill: #A9BBC7; font-size: 16px; font-weight: 600; text-anchor: middle; }
     .message-symbol { font-size: 20px; font-weight: 800; text-anchor: middle; }
     .message-title { fill: #E9F3F8; font-size: 13px; font-weight: 700; text-anchor: middle; }
     .message-hint { fill: #8EA9BA; font-size: 10px; text-anchor: middle; }
@@ -125,6 +171,10 @@ function formatPercent(value: number): string {
 
 function meterWidth(percent: number): string {
   return String(Math.round(percent * 12) / 10);
+}
+
+function ringDash(percent: number, radius: number): string {
+  return String(Math.round((2 * Math.PI * radius * percent) / 100 * 10) / 10);
 }
 
 function escapeXml(value: string): string {

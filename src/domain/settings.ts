@@ -1,5 +1,6 @@
 export type LimitBeaconSettings = {
   basis: "remaining" | "used";
+  displayStyle: "bars" | "rings";
   refreshMinutes: number;
   warningThreshold: number;
   criticalThreshold: number;
@@ -9,6 +10,7 @@ export type LimitBeaconSettings = {
 
 const DEFAULT_SETTINGS: LimitBeaconSettings = {
   basis: "remaining",
+  displayStyle: "bars",
   refreshMinutes: 5,
   warningThreshold: 35,
   criticalThreshold: 15,
@@ -44,6 +46,11 @@ export function normalizeSettings(raw: unknown): LimitBeaconSettings {
   const basis = valueOrDefault(settings, "basis");
   if (basis !== "remaining" && basis !== "used") {
     throw new TypeError('basis must be "remaining" or "used"');
+  }
+
+  const displayStyle = valueOrDefault(settings, "displayStyle");
+  if (displayStyle !== "bars" && displayStyle !== "rings") {
+    throw new TypeError('displayStyle must be "bars" or "rings"');
   }
 
   const refreshMinutes = valueOrDefault(settings, "refreshMinutes");
@@ -82,6 +89,7 @@ export function normalizeSettings(raw: unknown): LimitBeaconSettings {
 
   return {
     basis,
+    displayStyle,
     refreshMinutes,
     warningThreshold,
     criticalThreshold,

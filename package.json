@@ -11,7 +11,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test",
+    "test": "node --import tsx --test --test-concurrency=1",
     "validate": "npm run build && streamdeck validate com.jelicanin.limitbeacon.sdPlugin",
     "check": "npm run typecheck && npm test && node scripts/check-generated.mjs && streamdeck validate com.jelicanin.limitbeacon.sdPlugin"
   },

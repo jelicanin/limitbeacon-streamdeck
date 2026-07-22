@@ -12,6 +12,104 @@
       ],
       "UUID": "com.jelicanin.limitbeacon.codex-limits",
       "UserTitleEnabled": false
+    },
+    {
+      "Controllers": [
+        "Encoder"
+      ],
+      "Encoder": {
+        "Icon": "imgs/actions/limit-browser-encoder",
+        "StackColor": "#55C7E8",
+        "TriggerDescription": {
+          "Push": "Refresh usage",
+          "Rotate": "Browse limits",
+          "Touch": "Toggle remaining or used"
+        },
+        "layout": "layouts/limit-browser.json"
+      },
+      "Icon": "imgs/actions/limit-browser-icon",
+      "Name": "Limit Browser",
+      "PropertyInspectorPath": "ui/index.html",
+      "States": [
+        {
+          "Image": "imgs/actions/limit-browser"
+        }
+      ],
+      "UUID": "com.jelicanin.limitbeacon.limit-browser",
+      "UserTitleEnabled": false
+    },
+    {
+      "Controllers": [
+        "Encoder"
+      ],
+      "Encoder": {
+        "Icon": "imgs/actions/daily-tokens-encoder",
+        "StackColor": "#55C7E8",
+        "TriggerDescription": {
+          "Push": "Refresh daily token usage",
+          "Rotate": "Browse days or summaries",
+          "Touch": "Toggle daily or summary view"
+        },
+        "layout": "layouts/limit-browser.json"
+      },
+      "Icon": "imgs/actions/daily-tokens-icon",
+      "Name": "Daily Tokens",
+      "PropertyInspectorPath": "ui/index.html",
+      "States": [
+        {
+          "Image": "imgs/actions/daily-tokens"
+        }
+      ],
+      "UUID": "com.jelicanin.limitbeacon.daily-tokens",
+      "UserTitleEnabled": false
+    },
+    {
+      "Controllers": [
+        "Encoder"
+      ],
+      "Encoder": {
+        "Icon": "imgs/actions/credits-spend-encoder",
+        "StackColor": "#55C7E8",
+        "TriggerDescription": {
+          "Push": "Refresh account usage",
+          "Rotate": "Browse credits and spend"
+        },
+        "layout": "layouts/limit-browser.json"
+      },
+      "Icon": "imgs/actions/credits-spend-icon",
+      "Name": "Credits & Spend",
+      "PropertyInspectorPath": "ui/index.html",
+      "States": [
+        {
+          "Image": "imgs/actions/credits-spend"
+        }
+      ],
+      "UUID": "com.jelicanin.limitbeacon.credits-spend",
+      "UserTitleEnabled": false
+    },
+    {
+      "Controllers": [
+        "Encoder"
+      ],
+      "Encoder": {
+        "Icon": "imgs/actions/activity-stats-encoder",
+        "StackColor": "#55C7E8",
+        "TriggerDescription": {
+          "Push": "Refresh activity statistics",
+          "Rotate": "Browse activity statistics"
+        },
+        "layout": "layouts/limit-browser.json"
+      },
+      "Icon": "imgs/actions/activity-stats-icon",
+      "Name": "Activity Stats",
+      "PropertyInspectorPath": "ui/index.html",
+      "States": [
+        {
+          "Image": "imgs/actions/activity-stats"
+        }
+      ],
+      "UUID": "com.jelicanin.limitbeacon.activity-stats",
+      "UserTitleEnabled": false
     }
   ],
   "Author": "Milan Jelicanin",

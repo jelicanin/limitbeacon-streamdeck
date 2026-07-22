@@ -43,9 +43,34 @@ test("package and manifest identify LimitBeacon consistently", async () => {
   assert.equal(manifest.UUID, "com.jelicanin.limitbeacon");
 
   const actions = manifest.Actions as Array<Record<string, unknown>>;
-  assert.equal(actions.length, 1);
+  assert.equal(actions.length, 5);
   assert.match(String(actions[0]?.UUID), /^com\.jelicanin\.limitbeacon\./);
   assert.equal(actions[0]?.Icon, "imgs/actions/codex-limits-icon");
+  assert.equal(actions[1]?.Name, "Limit Browser");
+  assert.deepEqual(actions[1]?.Controllers, ["Encoder"]);
+  assert.equal(
+    (actions[1]?.Encoder as Record<string, unknown>)?.layout,
+    "layouts/limit-browser.json",
+  );
+  assert.deepEqual(
+    actions.slice(2).map((candidate) => candidate.Name),
+    ["Daily Tokens", "Credits & Spend", "Activity Stats"],
+  );
+  for (const specialized of actions.slice(2)) {
+    assert.deepEqual(specialized.Controllers, ["Encoder"]);
+    assert.equal(
+      (specialized.Encoder as Record<string, unknown>)?.layout,
+      "layouts/limit-browser.json",
+    );
+  }
+});
+
+test("unit tests run serially because the Stream Deck SDK rotates a shared log", async () => {
+  const pkg = JSON.parse(await readText("package.json")) as {
+    scripts: Record<string, string>;
+  };
+
+  assert.match(pkg.scripts.test ?? "", /--test-concurrency=1/u);
 });
 
 test("property inspector includes concise self-contained setup help", async () => {
@@ -76,4 +101,54 @@ test("property inspector stores key visuals per action and connection settings g
   assert.match(source, /message\.event === "didReceiveSettings"/u);
   assert.match(source, /event: "setSettings",[\s\S]*?context: propertyInspectorId/u);
   assert.doesNotMatch(source, /actionContext/u);
+});
+
+test("property inspector offers stacked bars and ring gauges per key", async () => {
+  const html = await readText("com.jelicanin.limitbeacon.sdPlugin/ui/index.html");
+  const source = await readText("src/ui/inspector.ts");
+
+  assert.match(html, /name="displayStyle"/u);
+  assert.match(html, /name="displayStyle" value="bars"/u);
+  assert.match(html, /name="displayStyle" value="rings"/u);
+  assert.match(source, /"displayStyle"/u);
+});
+
+test("short display choices are visible as horizontal radio groups", async () => {
+  const html = await readText("com.jelicanin.limitbeacon.sdPlugin/ui/index.html");
+  const css = await readText("com.jelicanin.limitbeacon.sdPlugin/ui/index.css");
+
+  for (const name of ["displayStyle", "basis", "resetStyle"]) {
+    assert.doesNotMatch(html, new RegExp(`<select name="${name}"`, "u"));
+    assert.match(html, new RegExp(`type="radio" name="${name}"`, "u"));
+  }
+  assert.match(html, /<select name="refreshMinutes">/u);
+  assert.match(css, /\.radio-group/u);
+  assert.match(css, /grid-auto-flow:\s*column/u);
+});
+
+test("limit browser exposes the shared inspector with dial-specific display controls", async () => {
+  const manifest = JSON.parse(
+    await readText("com.jelicanin.limitbeacon.sdPlugin/manifest.json"),
+  ) as { Actions: Array<Record<string, unknown>> };
+  const action = manifest.Actions.find((candidate) => candidate.Name === "Limit Browser");
+  const html = await readText("com.jelicanin.limitbeacon.sdPlugin/ui/index.html");
+  const source = await readText("src/ui/inspector.ts");
+
+  assert.equal(action?.PropertyInspectorPath, "ui/index.html");
+  assert.match(html, /name="displayStyle" value="bars"/u);
+  assert.match(html, /name="displayStyle" value="rings"/u);
+  assert.match(html, /data-key-only/u);
+  assert.match(source, /isDialInspector/u);
+});
+
+test("specialized dials expose focused help without irrelevant display settings", async () => {
+  const html = await readText("com.jelicanin.limitbeacon.sdPlugin/ui/index.html");
+  const source = await readText("src/ui/inspector.ts");
+
+  assert.match(html, /id="specialized-guide"/u);
+  assert.match(html, /id="specialized-guide-title"/u);
+  assert.match(source, /SPECIALIZED_DIALS/u);
+  assert.match(source, /Daily Tokens/u);
+  assert.match(source, /Credits & Spend/u);
+  assert.match(source, /Activity Stats/u);
 });

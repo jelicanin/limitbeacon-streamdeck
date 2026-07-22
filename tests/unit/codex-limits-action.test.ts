@@ -17,6 +17,13 @@ const readyState: UsageServiceState = {
     },
     weekly: null,
     planLabel: "plus",
+    accountHealth: {
+      credits: null,
+      individualLimit: null,
+      spendControlReached: null,
+      rateLimitReachedType: null,
+      resetCreditsAvailable: null,
+    },
     stale: false,
   },
 };
@@ -108,6 +115,20 @@ test("key settings changes rerender cache without refreshing", () => {
   assert.equal(service.rerenderCount, 1);
   assert.equal(service.refreshCount, 0);
   assert.match(latestSvg(key), />20%</u);
+});
+
+test("key display style changes only the selected key", () => {
+  const service = new FakeService();
+  const controller = new CodexLimitsController(service);
+  const ringKey = new FakeKey("ring-key");
+  const barKey = new FakeKey("bar-key");
+  controller.appear(ringKey, {});
+  controller.appear(barKey, {});
+
+  controller.keySettingsChanged(ringKey.id, { displayStyle: "rings" });
+
+  assert.match(latestSvg(ringKey), /class="ring-fill"/u);
+  assert.match(latestSvg(barKey), /class="meter-fill"/u);
 });
 
 test("two keys keep independent display settings", () => {

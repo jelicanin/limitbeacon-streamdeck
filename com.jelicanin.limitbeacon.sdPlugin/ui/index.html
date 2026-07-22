@@ -16,7 +16,7 @@
 
       <form id="settings-form">
         <section id="general-panel" class="tab-panel" role="tabpanel" aria-labelledby="general-tab">
-          <div class="status" aria-live="polite">
+          <div class="status" aria-live="polite" data-key-only>
             <span class="status-dot" aria-hidden="true"></span>
             <div>
               <strong id="status-title">Codex is starting</strong>
@@ -25,23 +25,38 @@
             </div>
           </div>
 
-          <fieldset>
+          <div id="specialized-guide" class="specialized-guide" hidden>
+            <strong id="specialized-guide-title">Dial</strong>
+            <p id="specialized-guide-detail"></p>
+            <p id="specialized-guide-controls"></p>
+          </div>
+
+          <fieldset data-configurable-display>
             <legend>Display</legend>
-            <label><span>Value</span>
-              <select name="basis">
-                <option value="remaining">Remaining</option>
-                <option value="used">Used</option>
-              </select>
-            </label>
-            <label><span>Reset time</span>
-              <select name="resetStyle">
-                <option value="countdown">Countdown</option>
-                <option value="local-time">Local date and time</option>
-              </select>
-            </label>
+            <div class="radio-setting">
+              <span>Style</span>
+              <div class="radio-group" role="radiogroup" aria-label="Display style">
+                <label class="radio-option"><input type="radio" name="displayStyle" value="bars" checked /><span>Bars</span></label>
+                <label class="radio-option"><input type="radio" name="displayStyle" value="rings" /><span>Rings</span></label>
+              </div>
+            </div>
+            <div class="radio-setting" data-key-only>
+              <span>Value</span>
+              <div class="radio-group" role="radiogroup" aria-label="Displayed value">
+                <label class="radio-option"><input type="radio" name="basis" value="remaining" checked /><span>Remaining</span></label>
+                <label class="radio-option"><input type="radio" name="basis" value="used" /><span>Used</span></label>
+              </div>
+            </div>
+            <div class="radio-setting" data-key-only>
+              <span>Reset time</span>
+              <div class="radio-group" role="radiogroup" aria-label="Reset time format">
+                <label class="radio-option"><input type="radio" name="resetStyle" value="countdown" checked /><span>Countdown</span></label>
+                <label class="radio-option"><input type="radio" name="resetStyle" value="local-time" /><span>Local time</span></label>
+              </div>
+            </div>
           </fieldset>
 
-          <fieldset>
+          <fieldset data-key-only>
             <legend>Alerts</legend>
             <label><span>Warning at remaining %</span>
               <input name="warningThreshold" type="number" min="0" max="100" step="1" value="35" />
@@ -74,6 +89,11 @@
         </section>
 
         <section id="help-panel" class="tab-panel" role="tabpanel" aria-labelledby="help-tab" hidden>
+          <fieldset id="specialized-help" hidden>
+            <legend id="specialized-help-title">Dial controls</legend>
+            <p id="specialized-help-copy" class="help-copy"></p>
+          </fieldset>
+
           <fieldset>
             <legend>Get started</legend>
             <ol class="setup-steps">

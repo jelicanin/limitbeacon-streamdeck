@@ -8,6 +8,16 @@ import {
   CodexLimitsAction,
   CodexLimitsController,
 } from "./actions/codex-limits-action.js";
+import {
+  LimitBrowserAction,
+  LimitBrowserController,
+} from "./actions/limit-browser-action.js";
+import {
+  ActivityStatsAction,
+  CreditsSpendAction,
+  DailyTokensAction,
+  SpecializedDialController,
+} from "./actions/specialized-dials-action.js";
 import { normalizeSettings } from "./domain/settings.js";
 import { locateCodex, type LocatorDependencies } from "./platform/codex-locator.js";
 import { CodexAppServerProvider } from "./providers/codex-app-server-provider.js";
@@ -17,11 +27,12 @@ import { UsageService } from "./services/usage-service.js";
 let settings = normalizeSettings(undefined);
 const locatorDependencies = nodeLocatorDependencies();
 const provider = new CodexAppServerProvider({
-  createClient: async () => {
+  createClient: async (onNotification) => {
     const executable = await locateCodex(settings.codexExecutable, locatorDependencies);
     return JsonlRpcClient.start({
       executable,
       args: ["app-server"],
+      onNotification,
       initializeParams: {
         clientInfo: {
           name: "limitbeacon",
@@ -36,6 +47,10 @@ const usageService = new UsageService(provider, {
   refreshIntervalMs: settings.refreshMinutes * 60_000,
 });
 const controller = new CodexLimitsController(usageService);
+const limitBrowserController = new LimitBrowserController(usageService);
+const dailyTokensController = new SpecializedDialController(usageService, "daily");
+const creditsSpendController = new SpecializedDialController(usageService, "credits");
+const activityStatsController = new SpecializedDialController(usageService, "activity");
 
 streamDeck.settings.onDidReceiveGlobalSettings((event) => {
   void applySettings(event.settings);
@@ -43,6 +58,10 @@ streamDeck.settings.onDidReceiveGlobalSettings((event) => {
 streamDeck.actions.registerAction(
   new CodexLimitsAction(controller, (payload) => streamDeck.ui.sendToPropertyInspector(payload)),
 );
+streamDeck.actions.registerAction(new LimitBrowserAction(limitBrowserController));
+streamDeck.actions.registerAction(new DailyTokensAction(dailyTokensController));
+streamDeck.actions.registerAction(new CreditsSpendAction(creditsSpendController));
+streamDeck.actions.registerAction(new ActivityStatsAction(activityStatsController));
 await streamDeck.connect();
 await applySettings(await streamDeck.settings.getGlobalSettings());
 
@@ -61,10 +80,16 @@ async function applySettings(rawSettings: unknown): Promise<void> {
   usageService.setRefreshInterval(next.refreshMinutes * 60_000);
 
   if (executableChanged) {
-    const active = usageService.getState().status !== "idle";
+    const rateLimitsActive = usageService.getState().status !== "idle";
+    const tokenUsageActive = usageService.getTokenUsageState().status !== "idle";
     await provider.reset();
-    if (active) {
+    if (rateLimitsActive) {
       void usageService.refresh().catch(() => usageService.refresh().catch(() => undefined));
+    }
+    if (tokenUsageActive) {
+      void usageService.refreshTokenUsage().catch(() =>
+        usageService.refreshTokenUsage().catch(() => undefined)
+      );
     }
   }
 }

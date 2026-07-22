@@ -7,6 +7,7 @@ function usage(overrides: Partial<UsageKeyViewModel> = {}): UsageKeyViewModel {
   return {
     type: "usage",
     basis: "remaining",
+    displayStyle: "bars",
     stale: false,
     fiveHour: { label: "5H", percent: 76, reset: "2h 14m", severity: "healthy" },
     weekly: { label: "7D", percent: 39, reset: "4d 8h", severity: "warning" },
@@ -40,6 +41,27 @@ test("renders two stacked progress meters without decorative arcs", () => {
   assert.equal(svg.match(/class="meter-track"/gu)?.length, 2);
   assert.equal(svg.match(/class="meter-fill"/gu)?.length, 2);
   assert.doesNotMatch(svg, /<path\b/iu);
+});
+
+test("renders two circular gauges when ring style is selected", () => {
+  const svg = renderKey(usage({ displayStyle: "rings" }));
+
+  assert.equal(svg.match(/class="ring-track"/gu)?.length, 2);
+  assert.equal(svg.match(/class="ring-fill"/gu)?.length, 2);
+  assert.match(svg, />5H · LEFT</u);
+  assert.match(svg, />7D · LEFT</u);
+  assert.match(svg, />76%</u);
+  assert.match(svg, />39%</u);
+  assert.doesNotMatch(svg, /class="meter-fill"/u);
+});
+
+test("renders one large circular gauge when no secondary limit exists", () => {
+  const svg = renderKey(usage({ displayStyle: "rings", weekly: null }));
+
+  assert.equal(svg.match(/class="ring-track"/gu)?.length, 1);
+  assert.equal(svg.match(/class="ring-fill"/gu)?.length, 1);
+  assert.match(svg, />76%</u);
+  assert.doesNotMatch(svg, />7D</u);
 });
 
 test("uses legible typography after the key is reduced to 72 pixels", () => {

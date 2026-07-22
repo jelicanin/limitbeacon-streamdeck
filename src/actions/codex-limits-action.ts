@@ -159,6 +159,7 @@ function toViewModel(
     return {
       type: "usage",
       basis: settings.basis,
+      displayStyle: settings.displayStyle,
       stale: state.status === "stale" || state.snapshot.stale,
       fiveHour: windowViewModel(state.snapshot.fiveHour, settings),
       weekly:
