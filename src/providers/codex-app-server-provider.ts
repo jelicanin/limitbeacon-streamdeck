@@ -1,14 +1,22 @@
 import { mapRateLimits, type UsageSnapshot, UsageValidationError } from "../domain/usage.js";
 import {
+  mapTokenUsage,
+  type TokenUsageSnapshot,
+  TokenUsageValidationError,
+} from "../domain/token-usage.js";
+import {
   JsonlRpcProcessError,
   JsonlRpcRemoteError,
 } from "./jsonl-rpc-client.js";
 
 const RATE_LIMITS_METHOD = "account/rateLimits/read";
+const TOKEN_USAGE_METHOD = "account/usage/read";
 
 export interface UsageProvider {
   read(): Promise<UsageSnapshot>;
+  readTokenUsage(): Promise<TokenUsageSnapshot>;
   close(): Promise<void>;
+  subscribeUpdates?(subscriber: () => void): () => void;
 }
 
 export interface RpcClientLike {
@@ -29,17 +37,47 @@ export class CodexProviderError extends Error {
 }
 
 export class CodexAppServerProvider implements UsageProvider {
-  readonly #createClient: () => Promise<RpcClientLike>;
+  readonly #createClient: (
+    onNotification: (method: string, params: unknown) => void,
+  ) => Promise<RpcClientLike>;
+  readonly #updateSubscribers = new Set<() => void>();
   #client: RpcClientLike | undefined;
   #generation = 0;
   #closed = false;
   #closePromise: Promise<void> | undefined;
 
-  constructor(options: { createClient: () => Promise<RpcClientLike> }) {
+  constructor(options: {
+    createClient: (
+      onNotification: (method: string, params: unknown) => void,
+    ) => Promise<RpcClientLike>;
+  }) {
     this.#createClient = options.createClient;
   }
 
+  subscribeUpdates(subscriber: () => void): () => void {
+    this.#updateSubscribers.add(subscriber);
+    return () => this.#updateSubscribers.delete(subscriber);
+  }
+
   async read(): Promise<UsageSnapshot> {
+    return mapProviderResponse(await this.#request(RATE_LIMITS_METHOD));
+  }
+
+  async readTokenUsage(): Promise<TokenUsageSnapshot> {
+    try {
+      return mapTokenUsage(await this.#request(TOKEN_USAGE_METHOD));
+    } catch (error) {
+      if (error instanceof TokenUsageValidationError) {
+        throw new CodexProviderError(
+          "CODEX_INCOMPATIBLE",
+          "Codex returned an unsupported token-usage response",
+        );
+      }
+      throw error;
+    }
+  }
+
+  async #request(method: string): Promise<unknown> {
     if (this.#closed) {
       throw unavailableError("Provider is closed");
     }
@@ -48,8 +86,7 @@ export class CodexAppServerProvider implements UsageProvider {
       let client: RpcClientLike | undefined;
       try {
         client = await this.#getClient();
-        const response = await client.request<unknown>(RATE_LIMITS_METHOD, undefined);
-        return mapProviderResponse(response);
+        return await client.request<unknown>(method, undefined);
       } catch (error) {
         if (error instanceof JsonlRpcProcessError) {
           await this.#discardClient(client);
@@ -70,6 +107,7 @@ export class CodexAppServerProvider implements UsageProvider {
       return this.#closePromise;
     }
     this.#closed = true;
+    this.#updateSubscribers.clear();
     const client = this.#client;
     this.#client = undefined;
     this.#closePromise = client?.close() ?? Promise.resolve();
@@ -89,7 +127,7 @@ export class CodexAppServerProvider implements UsageProvider {
       return this.#client;
     }
     const generation = this.#generation;
-    const client = await this.#createClient();
+    const client = await this.#createClient((method) => this.#receiveNotification(method));
     if (this.#closed || generation !== this.#generation) {
       await client.close();
       throw unavailableError(this.#closed ? "Provider is closed" : "Provider was reset");
@@ -104,6 +142,13 @@ export class CodexAppServerProvider implements UsageProvider {
       await failedClient.close();
     }
   }
+
+  #receiveNotification(method: string): void {
+    if (method !== "account/rateLimits/updated") return;
+    for (const subscriber of this.#updateSubscribers) {
+      subscriber();
+    }
+  }
 }
 
 function mapProviderResponse(response: unknown): UsageSnapshot {
@@ -113,7 +158,10 @@ function mapProviderResponse(response: unknown): UsageSnapshot {
       ? record.rateLimitsByLimitId
       : undefined;
     const rateLimits = isRecord(byLimitId?.codex) ? byLimitId.codex : record?.rateLimits;
-    return mapRateLimits({ rateLimits });
+    return mapRateLimits({
+      rateLimits,
+      rateLimitResetCredits: record?.rateLimitResetCredits,
+    });
   } catch (error) {
     if (error instanceof UsageValidationError) {
       throw new CodexProviderError(

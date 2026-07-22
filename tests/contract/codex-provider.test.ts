@@ -78,12 +78,61 @@ test("prefers the codex bucket from rateLimitsByLimitId", async (t) => {
   assert.equal(snapshot.planLabel, "plus");
 });
 
+test("emits updates only for rate-limit notifications", async (t) => {
+  const rpc = new FakeRpcClient([await fixture("direct.json")]);
+  let notify!: (method: string, params: unknown) => void;
+  const provider = new CodexAppServerProvider({
+    createClient: async (onNotification) => {
+      notify = onNotification;
+      return rpc;
+    },
+  });
+  t.after(() => provider.close());
+  let updates = 0;
+  provider.subscribeUpdates(() => {
+    updates += 1;
+  });
+  await provider.read();
+
+  notify("account/updated", {});
+  notify("account/rateLimits/updated", { rateLimits: { primary: { usedPercent: 25 } } });
+
+  assert.equal(updates, 1);
+});
+
 test("preserves an unavailable secondary window", async (t) => {
   const rpc = new FakeRpcClient([await fixture("primary-only.json")]);
   const provider = new CodexAppServerProvider({ createClient: async () => rpc });
   t.after(() => provider.close());
 
   assert.equal((await provider.read()).weekly, null);
+});
+
+test("reads token usage without serializing a params field", async (t) => {
+  const rpc = new FakeRpcClient([await fixture("../token-usage/full.json")]);
+  const provider = new CodexAppServerProvider({ createClient: async () => rpc });
+  t.after(() => provider.close());
+
+  const snapshot = await provider.readTokenUsage();
+
+  assert.equal(rpc.calls[0]?.method, "account/usage/read");
+  assert.deepEqual(JSON.parse(rpc.calls[0]?.encodedRequest ?? "{}"), {
+    method: "account/usage/read",
+  });
+  assert.equal(snapshot.daily[0]?.startDate, "2026-07-22");
+  assert.equal(snapshot.summary.lifetimeTokens, 123_456_789);
+});
+
+test("preserves optional credits and spend data from rate limits", async (t) => {
+  const rpc = new FakeRpcClient([await fixture("rich.json")]);
+  const provider = new CodexAppServerProvider({ createClient: async () => rpc });
+  t.after(() => provider.close());
+
+  const snapshot = await provider.read();
+
+  assert.equal(snapshot.accountHealth.credits?.balance, "12.50");
+  assert.equal(snapshot.accountHealth.individualLimit?.remainingPercent, 60);
+  assert.equal(snapshot.accountHealth.resetCreditsAvailable, 2);
 });
 
 test("maps the official unauthenticated RPC error to SIGN_IN_REQUIRED", async (t) => {

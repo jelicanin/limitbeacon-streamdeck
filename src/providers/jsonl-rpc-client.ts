@@ -10,6 +10,7 @@ export type StartOptions = {
   initializeParams: unknown;
   requestTimeoutMs?: number;
   maxLineBytes?: number;
+  onNotification?: (method: string, params: unknown) => void;
 };
 
 export class JsonlRpcProtocolError extends Error {
@@ -71,6 +72,7 @@ export class JsonlRpcClient {
   readonly #child: ChildProcessWithoutNullStreams;
   readonly #requestTimeoutMs: number;
   readonly #maxLineBytes: number;
+  readonly #onNotification: StartOptions["onNotification"];
   readonly #pending = new Map<number, PendingRequest>();
   #nextId = 0;
   #stdoutBuffer = Buffer.alloc(0);
@@ -86,6 +88,7 @@ export class JsonlRpcClient {
     this.#child = child;
     this.#requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.#maxLineBytes = options.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES;
+    this.#onNotification = options.onNotification;
     this.#exitPromise = new Promise((resolve) => {
       this.#resolveExit = resolve;
     });
@@ -245,6 +248,11 @@ export class JsonlRpcClient {
       return;
     }
     if (typeof message.method === "string") {
+      try {
+        this.#onNotification?.(message.method, message.params);
+      } catch {
+        // Notification consumers cannot interrupt request processing.
+      }
       return;
     }
     if (typeof message.id !== "number" || !Number.isSafeInteger(message.id)) {

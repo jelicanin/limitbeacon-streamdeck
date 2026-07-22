@@ -5,11 +5,29 @@ export type UsageWindow = {
   resetsAt: number | null;
 };
 
+export type AccountHealth = {
+  credits: {
+    hasCredits: boolean;
+    unlimited: boolean;
+    balance: string | null;
+  } | null;
+  individualLimit: {
+    limit: string;
+    used: string;
+    remainingPercent: number;
+    resetsAt: number;
+  } | null;
+  spendControlReached: boolean | null;
+  rateLimitReachedType: string | null;
+  resetCreditsAvailable: number | null;
+};
+
 export type UsageSnapshot = {
   capturedAt: number;
   fiveHour: UsageWindow;
   weekly: UsageWindow | null;
   planLabel: string | null;
+  accountHealth: AccountHealth;
   stale: boolean;
 };
 
@@ -98,6 +116,86 @@ export function mapRateLimits(response: unknown, capturedAt = Date.now()): Usage
     weekly:
       secondary === undefined || secondary === null ? null : mapWindow(secondary, "weekly"),
     planLabel: typeof rateLimits.planType === "string" ? rateLimits.planType : null,
+    accountHealth: mapAccountHealth(rateLimits, response),
     stale: false,
   };
+}
+
+function mapAccountHealth(rateLimits: UnknownRecord, response: UnknownRecord): AccountHealth {
+  const credits = rateLimits.credits;
+  const individualLimit = rateLimits.individualLimit;
+  const resetCredits = response.rateLimitResetCredits;
+
+  return {
+    credits:
+      credits === undefined || credits === null
+        ? null
+        : mapCredits(credits),
+    individualLimit:
+      individualLimit === undefined || individualLimit === null
+        ? null
+        : mapIndividualLimit(individualLimit),
+    spendControlReached: readNullableBoolean(rateLimits, "spendControlReached"),
+    rateLimitReachedType: readNullableString(rateLimits, "rateLimitReachedType"),
+    resetCreditsAvailable:
+      resetCredits === undefined || resetCredits === null
+        ? null
+        : mapResetCreditCount(resetCredits),
+  };
+}
+
+function mapCredits(value: unknown): NonNullable<AccountHealth["credits"]> {
+  if (!isRecord(value) || typeof value.hasCredits !== "boolean" || typeof value.unlimited !== "boolean") {
+    throw new UsageValidationError("INVALID_RATE_LIMIT_WINDOW", "credits is invalid");
+  }
+  const balance = value.balance;
+  if (balance !== undefined && balance !== null && typeof balance !== "string") {
+    throw new UsageValidationError("INVALID_RATE_LIMIT_WINDOW", "credit balance is invalid");
+  }
+  return { hasCredits: value.hasCredits, unlimited: value.unlimited, balance: balance ?? null };
+}
+
+function mapIndividualLimit(value: unknown): NonNullable<AccountHealth["individualLimit"]> {
+  if (!isRecord(value) || typeof value.limit !== "string" || typeof value.used !== "string") {
+    throw new UsageValidationError("INVALID_RATE_LIMIT_WINDOW", "individual limit is invalid");
+  }
+  return {
+    limit: value.limit,
+    used: value.used,
+    remainingPercent: readPercentage(value.remainingPercent),
+    resetsAt: readRequiredNonNegativeNumber(value, "resetsAt"),
+  };
+}
+
+function mapResetCreditCount(value: unknown): number {
+  if (!isRecord(value) || !Number.isSafeInteger(value.availableCount) || Number(value.availableCount) < 0) {
+    throw new UsageValidationError("INVALID_RATE_LIMIT_WINDOW", "reset credit count is invalid");
+  }
+  return Number(value.availableCount);
+}
+
+function readRequiredNonNegativeNumber(record: UnknownRecord, field: string): number {
+  const value = readNullableNonNegativeNumber(record, field);
+  if (value === null) {
+    throw new UsageValidationError("INVALID_RATE_LIMIT_WINDOW", `${field} is required`);
+  }
+  return value;
+}
+
+function readNullableBoolean(record: UnknownRecord, field: string): boolean | null {
+  const value = record[field];
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "boolean") {
+    throw new UsageValidationError("INVALID_RATE_LIMIT_WINDOW", `${field} must be a boolean or null`);
+  }
+  return value;
+}
+
+function readNullableString(record: UnknownRecord, field: string): string | null {
+  const value = record[field];
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new UsageValidationError("INVALID_RATE_LIMIT_WINDOW", `${field} must be a string or null`);
+  }
+  return value;
 }

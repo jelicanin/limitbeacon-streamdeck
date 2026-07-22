@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { UsageSnapshot } from "../../src/domain/usage.js";
+import type { TokenUsageSnapshot } from "../../src/domain/token-usage.js";
 import type { UsageProvider } from "../../src/providers/codex-app-server-provider.js";
 import {
   UsageService,
@@ -20,15 +21,42 @@ function snapshot(capturedAt = 1_000): UsageSnapshot {
     },
     weekly: null,
     planLabel: "plus",
+    accountHealth: {
+      credits: null,
+      individualLimit: null,
+      spendControlReached: null,
+      rateLimitReachedType: null,
+      resetCreditsAvailable: null,
+    },
+    stale: false,
+  };
+}
+
+function tokenSnapshot(capturedAt = 1_000): TokenUsageSnapshot {
+  return {
+    capturedAt,
+    daily: [{ startDate: "2026-07-22", tokens: 500_000 }],
+    summary: {
+      currentStreakDays: 4,
+      lifetimeTokens: 123_456_789,
+      longestRunningTurnSec: 905,
+      longestStreakDays: 12,
+      peakDailyTokens: 3_456_789,
+    },
     stale: false,
   };
 }
 
 class FakeProvider implements UsageProvider {
   readCount = 0;
+  tokenReadCount = 0;
   closeCount = 0;
+  updateSubscriber: (() => void) | undefined;
 
-  constructor(private readonly outcomes: unknown[]) {}
+  constructor(
+    private readonly outcomes: unknown[],
+    private readonly tokenOutcomes: unknown[] = [],
+  ) {}
 
   async read(): Promise<UsageSnapshot> {
     this.readCount += 1;
@@ -39,8 +67,26 @@ class FakeProvider implements UsageProvider {
     return await (outcome as UsageSnapshot | Promise<UsageSnapshot>);
   }
 
+  async readTokenUsage(): Promise<TokenUsageSnapshot> {
+    this.tokenReadCount += 1;
+    const outcome = this.tokenOutcomes.shift();
+    if (outcome instanceof Error) throw outcome;
+    return await (outcome as TokenUsageSnapshot | Promise<TokenUsageSnapshot>);
+  }
+
   async close(): Promise<void> {
     this.closeCount += 1;
+  }
+
+  subscribeUpdates(subscriber: () => void): () => void {
+    this.updateSubscriber = subscriber;
+    return () => {
+      if (this.updateSubscriber === subscriber) this.updateSubscriber = undefined;
+    };
+  }
+
+  emitUpdate(): void {
+    this.updateSubscriber?.();
   }
 }
 
@@ -110,6 +156,83 @@ test("concurrent manual refreshes return the same promise", async (t) => {
   assert.equal(provider.readCount, 1);
 });
 
+test("provider updates refresh only while a surface is visible", async (t) => {
+  const provider = new FakeProvider([snapshot(), snapshot(2_000)]);
+  const service = new UsageService(provider);
+  t.after(() => service.close());
+  const unsubscribe = service.subscribe(() => {});
+  await service.refresh();
+
+  provider.emitUpdate();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(provider.readCount, 2);
+  assert.equal(service.getState().snapshot?.capturedAt, 2_000);
+
+  unsubscribe();
+  provider.emitUpdate();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(provider.readCount, 2);
+});
+
+test("two token subscribers share one token-usage read", async (t) => {
+  const provider = new FakeProvider([], [tokenSnapshot()]);
+  const service = new UsageService(provider);
+  t.after(() => service.close());
+  const first: unknown[] = [];
+  const second: unknown[] = [];
+
+  service.subscribeTokenUsage((state) => first.push(state));
+  service.subscribeTokenUsage((state) => second.push(state));
+  await service.refreshTokenUsage();
+
+  assert.equal(provider.tokenReadCount, 1);
+  assert.equal((first.at(-1) as { status?: string }).status, "ready");
+  assert.equal((second.at(-1) as { status?: string }).status, "ready");
+});
+
+test("the shared poll timer reads only visible data channels", async (t) => {
+  const provider = new FakeProvider(
+    [snapshot(), snapshot(2_000)],
+    [tokenSnapshot(), tokenSnapshot(2_000)],
+  );
+  const timers = new FakeTimers();
+  const service = new UsageService(provider, { timers });
+  t.after(() => service.close());
+  const unsubscribeRate = service.subscribe(() => {});
+  const unsubscribeTokens = service.subscribeTokenUsage(() => {});
+  await Promise.all([service.refresh(), service.refreshTokenUsage()]);
+
+  timers.fire(300_000);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(provider.readCount, 2);
+  assert.equal(provider.tokenReadCount, 2);
+
+  unsubscribeTokens();
+  timers.fire(300_000);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(provider.tokenReadCount, 2);
+  unsubscribeRate();
+});
+
+test("temporary token errors retain only the token snapshot as stale", async (t) => {
+  const provider = new FakeProvider(
+    [snapshot()],
+    [tokenSnapshot(), new Error("token usage unavailable")],
+  );
+  const service = new UsageService(provider);
+  t.after(() => service.close());
+  await service.refresh();
+  await service.refreshTokenUsage();
+
+  await assert.rejects(service.refreshTokenUsage(), /token usage unavailable/u);
+
+  assert.equal(service.getState().status, "ready");
+  assert.equal(service.getTokenUsageState().status, "stale");
+  assert.equal(service.getTokenUsageState().snapshot?.stale, true);
+});
+
 test("visual rerender emits cached state without reading the provider", async (t) => {
   const provider = new FakeProvider([snapshot()]);
   const service = new UsageService(provider);
@@ -174,6 +297,22 @@ test("changing cadence replaces only the poll timer", async (t) => {
     [60_000, 900_000],
   );
   assert.equal(provider.readCount, 1);
+});
+
+test("changing cadence also updates a token-only subscription", async (t) => {
+  const provider = new FakeProvider([], [tokenSnapshot()]);
+  const timers = new FakeTimers();
+  const service = new UsageService(provider, { timers });
+  t.after(() => service.close());
+  service.subscribeTokenUsage(() => {});
+  await service.refreshTokenUsage();
+
+  service.setRefreshInterval(15 * 60_000);
+
+  assert.deepEqual(
+    [...timers.intervals.values()].map(({ delay }) => delay).sort((a, b) => a - b),
+    [60_000, 900_000],
+  );
 });
 
 test("temporary errors retain the last successful snapshot as stale", async (t) => {

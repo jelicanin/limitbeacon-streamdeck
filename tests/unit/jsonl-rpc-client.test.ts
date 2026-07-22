@@ -71,6 +71,18 @@ test("notifications do not resolve pending requests", async (t) => {
   assert.deepEqual(await client.request("notification-first", null), { value: "response" });
 });
 
+test("delivers notifications without affecting the pending response", async (t) => {
+  const notifications: Array<{ method: string; params: unknown }> = [];
+  const client = await startClient(t, "standard", {
+    onNotification: (method, params) => notifications.push({ method, params }),
+  });
+
+  assert.deepEqual(await client.request("notification-first", null), { value: "response" });
+  assert.deepEqual(notifications, [
+    { method: "account/rateLimits/updated", params: { fake: true } },
+  ]);
+});
+
 test("malformed JSON rejects pending requests as a protocol error", async (t) => {
   const client = await startClient(t);
 

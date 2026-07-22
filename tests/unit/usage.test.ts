@@ -56,6 +56,13 @@ test("maps valid five-hour and weekly windows", () => {
       resetsAt: 1_750_604_800,
     },
     planLabel: "plus",
+    accountHealth: {
+      credits: null,
+      individualLimit: null,
+      spendControlReached: null,
+      rateLimitReachedType: null,
+      resetCreditsAvailable: null,
+    },
     stale: false,
   });
 });
@@ -82,6 +89,37 @@ test("computes remaining percentage from used percentage", () => {
   const snapshot = mapRateLimits({ rateLimits: { primary: primary(33.3) } }, capturedAt);
 
   assert.equal(snapshot.fiveHour.remainingPercent, 100 - 33.3);
+});
+
+test("maps optional read-only credits and spend data", () => {
+  const snapshot = mapRateLimits({
+    rateLimits: {
+      primary: primary(25),
+      credits: { hasCredits: true, unlimited: false, balance: "12.50" },
+      individualLimit: {
+        limit: "100.00",
+        used: "40.00",
+        remainingPercent: 60,
+        resetsAt: 1_750_604_800,
+      },
+      spendControlReached: false,
+      rateLimitReachedType: null,
+    },
+    rateLimitResetCredits: { availableCount: 2 },
+  }, capturedAt);
+
+  assert.deepEqual(snapshot.accountHealth, {
+    credits: { hasCredits: true, unlimited: false, balance: "12.50" },
+    individualLimit: {
+      limit: "100.00",
+      used: "40.00",
+      remainingPercent: 60,
+      resetsAt: 1_750_604_800,
+    },
+    spendControlReached: false,
+    rateLimitReachedType: null,
+    resetCreditsAvailable: 2,
+  });
 });
 
 for (const [name, response] of [
