@@ -4,7 +4,7 @@ LimitBeacon runs locally as a Stream Deck plugin.
 
 ## Data it reads
 
-LimitBeacon launches the official local `codex app-server` process and requests current usage limits through `account/rateLimits/read`. It uses the returned percentages, reset times, window presence, and plan label only to render the Stream Deck key and Property Inspector status.
+LimitBeacon launches the official local `codex app-server` process and requests current limits and usage through `account/rateLimits/read` and `account/usage/read`. It uses returned percentages, reset times, token totals, account usage fields, and activity statistics only to render Stream Deck keys, dials, and Property Inspector status. Fields not returned by Codex remain unavailable.
 
 ## Data it stores
 

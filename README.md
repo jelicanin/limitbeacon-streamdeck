@@ -23,9 +23,42 @@ Press a key for an immediate refresh. Automatic updates, connection management, 
 - Remaining or used percentage, configured independently per key
 - Primary and secondary usage windows when Codex makes them available
 - Reset countdown or local date and time
+- Horizontal meters or circular gauges, selected independently per key
+- Five focused actions: one key action and four Stream Deck + dial actions
+- Daily token usage and activity statistics when supplied by Codex
+- Credits and spend information when available for the signed-in account
+- Smooth directional transitions while browsing dial cards
 - Clear warning, critical, stale, loading, and sign-in states
 
 ![LimitBeacon displays available usage windows without inventing missing data](docs/assets/limitbeacon-limits.png)
+
+## Choose your view
+
+Use the compact horizontal meter or switch any key to a circular gauge. Each key keeps its own display preference, remaining or used basis, and reset-time format.
+
+![LimitBeacon offers horizontal meters and circular gauges](docs/assets/limitbeacon-views.png)
+
+## Stream Deck + dials
+
+LimitBeacon includes four focused Stream Deck + dial actions:
+
+- **Limit Browser** — browse current rate-limit windows and switch between remaining and used
+- **Daily Tokens** — browse daily token usage or touch the display for a compact summary
+- **Credits & Spend** — browse credits, spend allowance, and reset credits when available
+- **Activity Stats** — browse lifetime tokens, peak usage, streaks, and longest turn when available
+
+Rotate any dial to browse its cards and press it for an immediate refresh. Each dial keeps its own position and settings.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/limitbeacon-dial-limit-browser.png" alt="Browse available Codex limits from a Stream Deck dial"></td>
+    <td width="50%"><img src="docs/assets/limitbeacon-dial-daily-tokens.png" alt="Browse daily Codex token usage from a Stream Deck dial"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/assets/limitbeacon-dial-credits-spend.png" alt="Review available credits and spend controls from a Stream Deck dial"></td>
+    <td width="50%"><img src="docs/assets/limitbeacon-dial-activity-stats.png" alt="Browse Codex activity statistics from a Stream Deck dial"></td>
+  </tr>
+</table>
 
 <table>
   <tr>
@@ -61,9 +94,9 @@ Add **Codex Limits** to a Stream Deck key. Press the key to refresh immediately.
 
 ## Privacy and security
 
-LimitBeacon reads limits through the official local Codex App Server method `account/rateLimits/read`. It does not read or change Codex credential files, browser cookies, refresh tokens, keychain entries, or private endpoints. It contains no telemetry.
+LimitBeacon reads limits and account usage through the official local Codex App Server methods `account/rateLimits/read` and `account/usage/read`. It does not read or change Codex credential files, browser cookies, refresh tokens, keychain entries, or private endpoints. It contains no telemetry.
 
-Missing secondary-limit data stays unavailable; LimitBeacon does not estimate or invent it. See [PRIVACY.md](PRIVACY.md) for the complete data-handling description.
+Missing limits, account fields, and statistics stay unavailable; LimitBeacon does not estimate or invent them. See [PRIVACY.md](PRIVACY.md) for the complete data-handling description.
 
 ## Troubleshooting
 
