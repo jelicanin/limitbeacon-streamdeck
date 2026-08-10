@@ -116,6 +116,23 @@ test("renders an activity metric as a typographic card", () => {
   assert.doesNotMatch(svg, /special-meter-fill/u);
 });
 
+test("wraps a long account status across two centered lines", () => {
+  const svg = renderSpecializedDial(cards({
+    cards: [{
+      kind: "stat",
+      label: "ACCOUNT STATUS",
+      value: "LIMIT REACHED",
+      detail: "CHECK CODEX",
+      tone: "critical",
+    }],
+  }));
+
+  assert.match(svg, /<text x="100" y="49" class="stat-value multiline"[^>]*>LIMIT<\/text>/u);
+  assert.match(svg, /<text x="100" y="69" class="stat-value multiline"[^>]*>REACHED<\/text>/u);
+  assert.doesNotMatch(svg, /<tspan/u);
+  assert.doesNotMatch(svg, />LIMIT REACHED</u);
+});
+
 test("renders a concise unavailable state", () => {
   const svg = renderSpecializedDial({
     type: "message",

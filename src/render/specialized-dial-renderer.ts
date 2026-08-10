@@ -129,9 +129,13 @@ function renderMeter(card: Extract<SpecializedCard, { kind: "meter" }>, color: s
 }
 
 function renderStat(card: Extract<SpecializedCard, { kind: "stat" }>, color: string): string {
+  const breakAt = card.value.length > 10 ? card.value.indexOf(" ") : -1;
+  const value = breakAt > 0
+    ? `<text x="100" y="49" class="stat-value multiline" fill="${color}">${escapeXml(card.value.slice(0, breakAt))}</text><text x="100" y="69" class="stat-value multiline" fill="${color}">${escapeXml(card.value.slice(breakAt + 1))}</text>`
+    : `<text x="100" y="62" class="stat-value" fill="${color}">${escapeXml(card.value)}</text>`;
   return `
     <text x="100" y="26" class="center-label">${escapeXml(card.label)}</text>
-    <text x="100" y="62" class="stat-value" fill="${color}">${escapeXml(card.value)}</text>
+    ${value}
     <text x="100" y="84" class="center-detail">${escapeXml(card.detail)}</text>
   `;
 }
@@ -158,6 +162,7 @@ function svg(content: string): string {
     .center-label, .center-value, .stat-value, .center-detail { text-anchor: middle; }
     .center-value { font-size: 29px; font-weight: 800; }
     .stat-value { font-size: 31px; font-weight: 800; }
+    .stat-value.multiline { font-size: 23px; }
     .center-detail { fill: #8FA9B9; font-size: 12px; font-weight: 600; }
     .special-meter-track { fill: #243A47; }
     .stale { fill: #F2B84B; font-size: 8px; font-weight: 700; text-anchor: end; }
