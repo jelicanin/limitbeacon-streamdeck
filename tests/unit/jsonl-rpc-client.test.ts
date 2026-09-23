@@ -199,3 +199,22 @@ test("spawn failure rejects without waiting for an exit event", async () => {
       error instanceof JsonlRpcProcessError && error.diagnosticReason === "SPAWN_FAILED",
   );
 });
+
+test("broken child stdin rejects pending work with a typed process error", async (t) => {
+  const client = await startClient(t, "broken-stdin");
+  await client.request("close-stdin", null);
+  await assert.rejects(
+    client.request("echo", { value: "x".repeat(1024 * 1024) }),
+    (error: unknown) =>
+      error instanceof JsonlRpcProcessError && error.diagnosticReason === "STDIN_FAILED",
+  );
+});
+
+test("close forcibly terminates a child that ignores EOF and SIGTERM", async (t) => {
+  const client = await startClient(t, "uncooperative");
+  const pid = await client.request<number>("process/id", null);
+  const start = performance.now();
+  await client.close();
+  assert.ok(performance.now() - start < 1200, "shutdown must finish before the child failsafe");
+  assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+});

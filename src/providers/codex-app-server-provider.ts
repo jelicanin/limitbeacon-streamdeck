@@ -6,6 +6,7 @@ import {
 } from "../domain/token-usage.js";
 import {
   JsonlRpcProcessError,
+  JsonlRpcProtocolError,
   JsonlRpcRemoteError,
 } from "./jsonl-rpc-client.js";
 
@@ -41,7 +42,9 @@ export class CodexAppServerProvider implements UsageProvider {
     onNotification: (method: string, params: unknown) => void,
   ) => Promise<RpcClientLike>;
   readonly #updateSubscribers = new Set<() => void>();
+  readonly #releases = new Set<Promise<void>>();
   #client: RpcClientLike | undefined;
+  #initializing: Promise<RpcClientLike> | undefined;
   #generation = 0;
   #closed = false;
   #closePromise: Promise<void> | undefined;
@@ -82,15 +85,26 @@ export class CodexAppServerProvider implements UsageProvider {
       throw unavailableError("Provider is closed");
     }
 
+    const generation = this.#generation;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       let client: RpcClientLike | undefined;
       try {
         client = await this.#getClient();
+        this.#assertCurrent(generation);
         return await client.request<unknown>(method, undefined);
       } catch (error) {
+        this.#assertCurrent(generation);
+        if (error instanceof JsonlRpcProtocolError) {
+          await this.#discardClient(client);
+          throw new CodexProviderError(
+            "CODEX_INCOMPATIBLE",
+            "Codex returned an invalid protocol response",
+          );
+        }
         if (error instanceof JsonlRpcProcessError) {
           await this.#discardClient(client);
           if (attempt === 0) {
+            this.#assertCurrent(generation);
             continue;
           }
           throw unavailableError("Codex App Server stopped repeatedly");
@@ -107,30 +121,68 @@ export class CodexAppServerProvider implements UsageProvider {
       return this.#closePromise;
     }
     this.#closed = true;
+    this.#generation += 1;
     this.#updateSubscribers.clear();
-    const client = this.#client;
-    this.#client = undefined;
-    this.#closePromise = client?.close() ?? Promise.resolve();
+    const release = this.#releaseClient();
+    this.#closePromise = Promise.all([...this.#releases, release]).then(() => undefined);
     return this.#closePromise;
   }
 
   async reset(): Promise<void> {
     if (this.#closed) return;
     this.#generation += 1;
+    await this.#releaseClient();
+  }
+
+  #releaseClient(): Promise<void> {
     const client = this.#client;
+    const initializing = this.#initializing;
     this.#client = undefined;
-    await client?.close();
+    this.#initializing = undefined;
+    return this.#trackRelease(Promise.all([
+      client?.close(),
+      // The old initialization owns closing any client that arrives after invalidation.
+      initializing?.catch(() => undefined),
+    ]).then(() => undefined));
+  }
+
+  #trackRelease(release: Promise<void>): Promise<void> {
+    this.#releases.add(release);
+    void release.then(
+      () => { this.#releases.delete(release); },
+      () => { this.#releases.delete(release); },
+    );
+    return release;
+  }
+
+  #assertCurrent(generation: number): void {
+    if (this.#closed || generation !== this.#generation) {
+      throw unavailableError(this.#closed ? "Provider is closed" : "Provider was reset");
+    }
   }
 
   async #getClient(): Promise<RpcClientLike> {
-    if (this.#client !== undefined) {
-      return this.#client;
-    }
+    this.#assertCurrent(this.#generation);
+    if (this.#client !== undefined) return this.#client;
+    if (this.#initializing !== undefined) return this.#initializing;
+
     const generation = this.#generation;
-    const client = await this.#createClient((method) => this.#receiveNotification(method));
+    const initializing = this.#initializeClient(generation);
+    this.#initializing = initializing;
+    try {
+      return await initializing;
+    } finally {
+      if (this.#initializing === initializing) this.#initializing = undefined;
+    }
+  }
+
+  async #initializeClient(generation: number): Promise<RpcClientLike> {
+    const client = await this.#createClient((method) => {
+      if (!this.#closed && generation === this.#generation) this.#receiveNotification(method);
+    });
     if (this.#closed || generation !== this.#generation) {
       await client.close();
-      throw unavailableError(this.#closed ? "Provider is closed" : "Provider was reset");
+      this.#assertCurrent(generation);
     }
     this.#client = client;
     return client;
@@ -139,7 +191,7 @@ export class CodexAppServerProvider implements UsageProvider {
   async #discardClient(failedClient: RpcClientLike | undefined): Promise<void> {
     if (failedClient !== undefined && this.#client === failedClient) {
       this.#client = undefined;
-      await failedClient.close();
+      await this.#trackRelease(failedClient.close());
     }
   }
 
