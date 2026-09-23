@@ -3,6 +3,9 @@ import {
   type DidReceiveSettingsEvent,
   type DialDownEvent,
   type DialRotateEvent,
+  type PropertyInspectorDidAppearEvent,
+  type PropertyInspectorDidDisappearEvent,
+  type SendToPluginEvent,
   SingletonAction,
   type TouchTapEvent,
   type WillAppearEvent,
@@ -28,7 +31,16 @@ import type {
   UsageSubscriber,
 } from "../services/usage-service.js";
 
+import {
+  InspectorConnection,
+  isInspectorRefreshCommand,
+  type InspectorSender,
+} from "../ui/inspector-connection.js";
+
 export type SpecializedDialKind = "daily" | "credits" | "activity";
+
+type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
+type JsonObject = { [key: string]: JsonValue };
 
 type Service = Pick<
   UsageService,
@@ -54,15 +66,20 @@ type VisibleDial = {
   unsubscribe: () => void;
   pendingTicks: number;
   rotationTask: Promise<void> | null;
+  generation: number;
 };
 
 export class SpecializedDialController {
   readonly #service: Service;
+  readonly #inspector: InspectorConnection;
   readonly #kind: SpecializedDialKind;
   readonly #dials = new Map<string, VisibleDial>();
 
   constructor(service: Service, kind: SpecializedDialKind) {
     this.#service = service;
+    this.#inspector = new InspectorConnection((subscriber) => kind === "credits"
+      ? service.subscribe(subscriber)
+      : service.subscribeTokenUsage(subscriber));
     this.#kind = kind;
   }
 
@@ -75,33 +92,49 @@ export class SpecializedDialController {
       unsubscribe: () => {},
       pendingTicks: 0,
       rotationTask: null,
+      generation: 0,
     };
+    this.#dials.set(target.id, dial);
     if (this.#kind === "credits") {
       const subscriber: UsageSubscriber = (state) => {
+        this.#invalidate(dial);
         dial.state = state;
         this.#render(dial);
       };
       dial.unsubscribe = this.#service.subscribe(subscriber);
     } else {
       const subscriber: TokenUsageSubscriber = (state) => {
+        this.#invalidate(dial);
         dial.state = state;
         this.#render(dial);
       };
       dial.unsubscribe = this.#service.subscribeTokenUsage(subscriber);
     }
-    this.#dials.set(target.id, dial);
   }
 
   disappear(id: string): void {
-    this.#dials.get(id)?.unsubscribe();
+    const dial = this.#dials.get(id);
+    if (dial !== undefined) {
+      this.#invalidate(dial);
+      dial.unsubscribe();
+    }
     this.#dials.delete(id);
   }
 
   settingsChanged(id: string, rawSettings: unknown): void {
     const dial = this.#dials.get(id);
     if (dial === undefined) return;
+    this.#invalidate(dial);
     dial.settings = normalizeSettings(rawSettings);
     this.#render(dial);
+  }
+
+  inspectorAppeared(id: string, send: InspectorSender): void {
+    this.#inspector.appear(id, send);
+  }
+
+  inspectorDisappeared(id: string): void {
+    this.#inspector.disappear(id);
   }
 
   async rotate(id: string, ticks: number): Promise<void> {
@@ -124,6 +157,7 @@ export class SpecializedDialController {
   async touch(id: string): Promise<void> {
     const dial = this.#dials.get(id);
     if (dial === undefined || this.#kind !== "daily") return;
+    this.#invalidate(dial);
     dial.settings.summary = !dial.settings.summary;
     dial.settings.activeIndex = 0;
     await this.#persistAndRender(dial);
@@ -132,6 +166,7 @@ export class SpecializedDialController {
   async press(id: string): Promise<void> {
     const dial = this.#dials.get(id);
     if (dial === undefined) return;
+    const generation = this.#invalidate(dial);
     try {
       await dial.target.setFeedback({
         canvas: svgDataUrl(renderSpecializedDial({
@@ -142,14 +177,14 @@ export class SpecializedDialController {
       });
       if (this.#kind === "credits") await this.#service.refresh();
       else await this.#service.refreshTokenUsage();
-      this.#render(dial);
+      if (this.#isCurrent(dial, generation)) this.#render(dial);
     } catch {
-      await dial.target.showAlert();
+      if (this.#isCurrent(dial, generation)) await dial.target.showAlert();
     }
   }
 
   async #drainRotations(dial: VisibleDial): Promise<void> {
-    while (dial.pendingTicks !== 0) {
+    while (this.#dials.get(dial.target.id) === dial && dial.pendingTicks !== 0) {
       const ticks = dial.pendingTicks;
       dial.pendingTicks = 0;
       const from = toViewModel(this.#kind, dial.state, dial.settings);
@@ -166,15 +201,18 @@ export class SpecializedDialController {
     previousSettings: SpecializedSettings,
     direction: -1 | 1,
   ): Promise<void> {
+    const generation = ++dial.generation;
     try {
       await dial.target.setSettings({ ...dial.settings });
+      if (!this.#isCurrent(dial, generation)) return;
       const from = toViewModel(this.#kind, dial.state, previousSettings);
       const to = toViewModel(this.#kind, dial.state, dial.settings);
       if (from.type !== "cards" || to.type !== "cards") {
-        this.#render(dial);
+        if (this.#isCurrent(dial, generation)) this.#render(dial);
         return;
       }
       for (let frame = 1; frame <= 12; frame += 1) {
+        if (!this.#isCurrent(dial, generation)) return;
         const linearProgress = frame / 13;
         const easedProgress = 1 - (1 - linearProgress) ** 2;
         await dial.target.setFeedback({
@@ -182,29 +220,48 @@ export class SpecializedDialController {
         });
         await frameDelay();
       }
-      this.#render(dial);
+      if (this.#isCurrent(dial, generation)) this.#render(dial);
     } catch {
-      await dial.target.showAlert();
+      if (this.#isCurrent(dial, generation)) await dial.target.showAlert();
     }
   }
 
   async #persistAndRender(dial: VisibleDial): Promise<void> {
+    const generation = ++dial.generation;
     try {
       await dial.target.setSettings({ ...dial.settings });
-      this.#render(dial);
+      if (this.#isCurrent(dial, generation)) this.#render(dial);
     } catch {
-      await dial.target.showAlert();
+      if (this.#isCurrent(dial, generation)) await dial.target.showAlert();
     }
   }
 
+  #invalidate(dial: VisibleDial): number {
+    dial.pendingTicks = 0;
+    return ++dial.generation;
+  }
+
+  #isCurrent(dial: VisibleDial, generation: number): boolean {
+    return this.#dials.get(dial.target.id) === dial && dial.generation === generation;
+  }
+
   #render(dial: VisibleDial): void {
+    if (this.#dials.get(dial.target.id) !== dial) return;
     const canvas = svgDataUrl(renderSpecializedDial(toViewModel(this.#kind, dial.state, dial.settings)));
-    void dial.target.setFeedback({ canvas }).catch(() => dial.target.showAlert());
+    const generation = dial.generation;
+    void dial.target.setFeedback({ canvas }).catch(async () => {
+      if (this.#isCurrent(dial, generation)) await dial.target.showAlert();
+    }).catch(() => {
+      // The device may disconnect before its fallback alert is delivered.
+    });
   }
 }
 
 class SpecializedDialAction extends SingletonAction {
-  constructor(private readonly controller: SpecializedDialController) {
+  constructor(
+    private readonly controller: SpecializedDialController,
+    private readonly sendToPropertyInspector: InspectorSender = async () => {},
+  ) {
     super();
   }
 
@@ -218,6 +275,18 @@ class SpecializedDialAction extends SingletonAction {
 
   override onDidReceiveSettings(event: DidReceiveSettingsEvent): void {
     this.controller.settingsChanged(event.action.id, event.payload.settings);
+  }
+
+  override onPropertyInspectorDidAppear(event: PropertyInspectorDidAppearEvent): void {
+    this.controller.inspectorAppeared(event.action.id, this.sendToPropertyInspector);
+  }
+
+  override onPropertyInspectorDidDisappear(event: PropertyInspectorDidDisappearEvent): void {
+    this.controller.inspectorDisappeared(event.action.id);
+  }
+
+  override async onSendToPlugin(event: SendToPluginEvent<JsonValue, JsonObject>): Promise<void> {
+    if (isInspectorRefreshCommand(event.payload)) await this.controller.press(event.action.id);
   }
 
   override async onDialRotate(event: DialRotateEvent): Promise<void> {
@@ -247,20 +316,27 @@ export function buildDailyCards(
   summary: boolean,
   now = new Date(),
 ): SpecializedCard[] {
+  // The newest returned date anchors coverage, even for stale snapshots. Missing
+  // dates remain unknown: do not extend the period or average in invented zeroes.
+  const newest = [...snapshot.daily].sort((a, b) => b.startDate.localeCompare(a.startDate));
+  const end = newest[0];
+  if (end === undefined) return [];
+  const cutoff = Date.parse(`${end.startDate}T00:00:00Z`) - 6 * 86_400_000;
+  const newestSeven = newest.filter((bucket) => Date.parse(`${bucket.startDate}T00:00:00Z`) >= cutoff);
   if (summary) {
-    if (snapshot.daily.length === 0) return [];
-    const total = snapshot.daily.reduce((sum, bucket) => sum + bucket.tokens, 0);
+    const complete = newestSeven.length === 7;
+    const coverage = complete ? "TOKENS" : `${newestSeven.length} OF 7 DAYS`;
+    const total = newestSeven.reduce((sum, bucket) => sum + bucket.tokens, 0);
     const cards: SpecializedCard[] = [
-      statCard("7D TOTAL", compactNumber(total), "TOKENS"),
-      statCard("DAILY AVG", compactNumber(Math.round(total / snapshot.daily.length)), "TOKENS"),
+      statCard(complete ? "7D TOTAL" : "REPORTED TOTAL", compactNumber(total), coverage),
+      statCard(complete ? "DAILY AVG" : "REPORTED AVG", compactNumber(Math.round(total / newestSeven.length)), coverage),
     ];
     if (snapshot.summary.peakDailyTokens !== null) {
-      cards.push(statCard("PEAK DAY", compactNumber(snapshot.summary.peakDailyTokens), "TOKENS"));
+      cards.push(statCard("ACCOUNT PEAK", compactNumber(snapshot.summary.peakDailyTokens), "TOKENS"));
     }
     return cards;
   }
 
-  const newestSeven = snapshot.daily.slice(0, 7);
   const chronological = [...newestSeven].reverse();
   const peak = Math.max(...chronological.map((bucket) => bucket.tokens), 1);
   const bars = chronological.map((bucket) => Math.round((bucket.tokens / peak) * 100));

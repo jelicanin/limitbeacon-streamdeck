@@ -146,3 +146,11 @@ test("dynamic message text is XML escaped", () => {
 test("rendered UI contains no internal namespace", () => {
   assert.doesNotMatch(renderKey(usage()), /com\.jelicanin|limitbeacon-streamdeck/iu);
 });
+
+for (const weekly of [null, { label: "7D", percent: 39, reset: null, severity: "warning" as const }]) {
+  test(`ring reset remains unavailable for ${weekly === null ? "one" : "two"} windows`, () => {
+    const svg = renderKey(usage({ displayStyle: "rings", fiveHour: { label: "5H", percent: 76, reset: null, severity: "healthy" }, weekly }));
+    assert.equal(svg.match(/>Reset —</gu)?.length, weekly === null ? 1 : 2);
+    assert.doesNotMatch(svg, />No reset</u);
+  });
+}

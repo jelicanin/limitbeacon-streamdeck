@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { LimitBrowserController } from "../../src/actions/limit-browser-action.js";
+import { LimitBrowserAction, LimitBrowserController } from "../../src/actions/limit-browser-action.js";
 import type { UsageServiceState, UsageSubscriber } from "../../src/services/usage-service.js";
 
 const readyState: UsageServiceState = {
@@ -265,4 +265,107 @@ test("dial press shows refresh feedback before new usage arrives", async () => {
   resolveRefresh(service.state);
   await refresh;
   assert.match(latestSvg(dial), />5H · LEFT</u);
+});
+
+test("unknown duration never becomes a five-hour or weekly duration", async () => {
+  const service = new FakeService();
+  service.state = { ...readyState, snapshot: { ...readyState.snapshot!, fiveHour: { ...readyState.snapshot!.fiveHour, durationMinutes: null }, weekly: { ...readyState.snapshot!.weekly!, durationMinutes: null } } };
+  const controller = new LimitBrowserController(service);
+  const dial = new FakeDial("unknown");
+  controller.appear(dial, {});
+  assert.match(latestSvg(dial), />PRIMARY · LEFT</u);
+  await controller.rotate(dial.id, 1);
+  assert.match(latestSvg(dial), />SECONDARY · LEFT</u);
+  assert.doesNotMatch(latestSvg(dial), />5H|>7D/u);
+});
+
+for (const interrupt of ["disappear", "touch", "settings", "state", "press"] as const) {
+  test(`limit animation stops after ${interrupt} supersedes it`, async () => {
+    const service = new FakeService();
+    const controller = new LimitBrowserController(service);
+    const dial = new FakeDial("cancel");
+    controller.appear(dial, {});
+    let releaseFrame!: () => void;
+    const setFeedback = dial.setFeedback.bind(dial);
+    let block = true;
+    dial.setFeedback = async (feedback) => {
+      await setFeedback(feedback);
+      if (block) {
+        block = false;
+        await new Promise<void>((resolve) => { releaseFrame = resolve; });
+      }
+    };
+    const rotation = controller.rotate(dial.id, 1);
+    while (releaseFrame === undefined) await Promise.resolve();
+    if (interrupt === "disappear") controller.disappear(dial.id);
+    if (interrupt === "touch") await controller.touch(dial.id);
+    if (interrupt === "settings") controller.settingsChanged(dial.id, { displayStyle: "bars" });
+    if (interrupt === "state") for (const subscriber of service.subscribers) subscriber(singleWindowState);
+    if (interrupt === "press") await controller.press(dial.id);
+    const latest = latestSvg(dial);
+    const count = dial.feedback.length;
+    releaseFrame();
+    await rotation;
+    assert.equal(dial.feedback.length, count, "obsolete animation must not send another frame");
+    assert.equal(latestSvg(dial), latest);
+  });
+}
+
+test("limit inspector receives live status and stops after closing", () => {
+  const service = new FakeService();
+  const controller = new LimitBrowserController(service);
+  const messages: unknown[] = [];
+  controller.inspectorAppeared("inspector", async (payload) => { messages.push(payload); });
+  assert.deepEqual(messages, [{ status: "connected" }]);
+  for (const subscriber of service.subscribers) subscriber({ status: "loading", snapshot: null, error: null });
+  assert.deepEqual(messages.at(-1), { status: "starting" });
+  controller.inspectorDisappeared("inspector");
+  for (const subscriber of service.subscribers) subscriber(readyState);
+  assert.equal(messages.length, 2);
+});
+
+
+test("limit inspector Retry refreshes usage but ignores unrelated commands", async () => {
+  const service = new FakeService();
+  const controller = new LimitBrowserController(service);
+  controller.appear(new FakeDial("retry"), {});
+  const action = new LimitBrowserAction(controller);
+  for (const command of ["ignored", "refresh"]) {
+    await action.onSendToPlugin({ type: "sendToPlugin", action: { id: "retry" }, payload: { command } } as unknown as Parameters<LimitBrowserAction["onSendToPlugin"]>[0]);
+  }
+  assert.equal(service.refreshCount, 1);
+});
+
+
+for (const interrupt of ["disappear", "settings"] as const) {
+  test(`limit render failure cannot alert after ${interrupt}`, async () => {
+    const service = new FakeService();
+    const controller = new LimitBrowserController(service);
+    const dial = new FakeDial("late-error");
+    let rejectFeedback!: (error: Error) => void;
+    dial.setFeedback = () => new Promise<void>((_resolve, reject) => { rejectFeedback = reject; });
+    controller.appear(dial, {});
+    const rejectOldRender = rejectFeedback;
+    dial.setFeedback = async () => {};
+    if (interrupt === "disappear") controller.disappear(dial.id);
+    else controller.settingsChanged(dial.id, {});
+    rejectOldRender(new Error("closed connection"));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(dial.alertCount, 0);
+  });
+}
+
+test("limit render alert failure does not create an unhandled rejection", async () => {
+  const service = new FakeService();
+  const controller = new LimitBrowserController(service);
+  const dial = new FakeDial("failed-alert");
+  dial.setFeedback = async () => { throw new Error("feedback unavailable"); };
+  dial.showAlert = async () => {
+    dial.alertCount += 1;
+    throw new Error("alert unavailable");
+  };
+  controller.appear(dial, {});
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(dial.alertCount, 1);
+  controller.disappear(dial.id);
 });

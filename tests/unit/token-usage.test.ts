@@ -56,3 +56,20 @@ for (const [name, response] of [
     assert.throws(() => mapTokenUsage(response, capturedAt), TokenUsageValidationError);
   });
 }
+
+for (const startDate of ["yesterday", "2026-7-02", "2026-02-29", "2026-04-31", "2026-13-01", "2026-07-22T00:00:00Z"]) {
+  test(`rejects a noncanonical or impossible daily date: ${startDate}`, () => {
+    assert.throws(() => mapTokenUsage({ summary: {}, dailyUsageBuckets: [{ startDate, tokens: 10 }] }), TokenUsageValidationError);
+  });
+}
+
+test("duplicate dates cannot double count coverage or token totals", () => {
+  assert.throws(() => mapTokenUsage({ summary: {}, dailyUsageBuckets: [
+    { startDate: "2026-07-22", tokens: 10 },
+    { startDate: "2026-07-22", tokens: 20 },
+  ] }), TokenUsageValidationError);
+});
+
+test("accepts an actual leap date and preserves a reported zero", () => {
+  assert.deepEqual(mapTokenUsage({ summary: {}, dailyUsageBuckets: [{ startDate: "2024-02-29", tokens: 0 }] }).daily, [{ startDate: "2024-02-29", tokens: 0 }]);
+});

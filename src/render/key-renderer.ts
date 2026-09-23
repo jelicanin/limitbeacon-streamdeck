@@ -76,7 +76,7 @@ function renderRing(row: UsageRow, basis: string, x: number): string {
     <circle cx="${x}" cy="61" r="25" class="ring-track"/>
     <circle cx="${x}" cy="61" r="25" class="ring-fill" stroke="${color}" stroke-dasharray="${ringDash(row.percent, 25)} 999" transform="rotate(-90 ${x} 61)"/>
     <text x="${x}" y="68" class="ring-value" fill="${color}">${formatPercent(row.percent)}</text>
-    <text x="${x}" y="135" class="ring-reset">${escapeXml(row.reset ?? "No reset")}</text>
+    <text x="${x}" y="135" class="ring-reset">${escapeXml(row.reset ?? "Reset —")}</text>
   `;
 }
 
@@ -87,7 +87,7 @@ function renderSingleRing(row: UsageRow, basis: string): string {
     <circle cx="72" cy="67" r="38" class="ring-track"/>
     <circle cx="72" cy="67" r="38" class="ring-fill" stroke="${color}" stroke-dasharray="${ringDash(row.percent, 38)} 999" transform="rotate(-90 72 67)"/>
     <text x="72" y="77" class="single-ring-value" fill="${color}">${formatPercent(row.percent)}</text>
-    <text x="72" y="136" class="single-ring-reset">${escapeXml(row.reset ?? "No reset")}</text>
+    <text x="72" y="136" class="single-ring-reset">${escapeXml(row.reset ?? "Reset —")}</text>
   `;
 }
 
