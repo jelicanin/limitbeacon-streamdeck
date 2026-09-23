@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import { fileURLToPath } from "node:url";
 import test, { type TestContext } from "node:test";
 
@@ -200,7 +202,49 @@ test("spawn failure rejects without waiting for an exit event", async () => {
   );
 });
 
-test("broken child stdin rejects pending work with a typed process error", async (t) => {
+for (const failure of ["callback", "event"] as const) {
+  test(`stdin ${failure} failure rejects pending work with a typed process error`, async (t) => {
+    const originalSpawn = childProcess.spawn;
+    const spawnMock = t.mock.method(childProcess, "spawn", (...args: unknown[]) => {
+      const child = Reflect.apply(originalSpawn, childProcess, args);
+      assert.ok(child.stdin);
+      const input = child.stdin;
+      const originalWrite = input.write;
+      t.mock.method(input, "write", (...writeArgs: unknown[]) => {
+        if (String(writeArgs[0]).includes('"method":"echo"')) {
+          const error = Object.assign(new Error("simulated broken pipe"), { code: "EPIPE" });
+          queueMicrotask(() => {
+            if (failure === "event") input.emit("error", error);
+            else {
+              const callback = writeArgs.at(-1);
+              assert.equal(typeof callback, "function");
+              (callback as (error: Error) => void)(error);
+            }
+          });
+          return false;
+        }
+        return Reflect.apply(originalWrite, input, writeArgs);
+      });
+      return child;
+    });
+    syncBuiltinESMExports();
+    t.after(() => {
+      spawnMock.mock.restore();
+      syncBuiltinESMExports();
+    });
+    const client = await startClient(t);
+    await assert.rejects(
+      client.request("echo", { value: "request" }),
+      (error: unknown) =>
+        error instanceof JsonlRpcProcessError && error.diagnosticReason === "STDIN_FAILED",
+    );
+    await assert.rejects(client.request("echo", null), JsonlRpcProcessError);
+  });
+}
+
+test("closed POSIX stdin rejects pending work with a typed process error", {
+  skip: process.platform === "win32" ? "Windows inherited pipes do not signal this POSIX closure; callback and event paths are tested above" : false,
+}, async (t) => {
   const client = await startClient(t, "broken-stdin");
   await client.request("close-stdin", null);
   await assert.rejects(
