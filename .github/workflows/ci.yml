@@ -39,7 +39,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run checks
+      - name: Run portable checks
+        if: runner.os == 'Linux'
+        run: npm run check:portable
+
+      - name: Run checks including plugin startup
+        if: runner.os != 'Linux'
         run: npm run check
 
   osv:

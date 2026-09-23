@@ -77,4 +77,6 @@ const before = await Promise.all(bundles.map(async (bundle) => digest(await read
 await rebuild();
 const after = await Promise.all(bundles.map(async (bundle) => digest(await readFile(bundle))));
 assert.deepEqual(after, before, "Generated plugin bundles are not deterministic");
-await assertBundleStarts();
+if (!process.argv.includes("--build-only")) {
+  await assertBundleStarts();
+}

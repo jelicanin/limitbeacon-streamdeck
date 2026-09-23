@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test --test-concurrency=1",
     "validate": "npm run build && streamdeck validate com.jelicanin.limitbeacon.sdPlugin",
+    "check:portable": "npm run typecheck && npm test && node scripts/check-generated.mjs --build-only && streamdeck validate com.jelicanin.limitbeacon.sdPlugin",
     "check": "npm run typecheck && npm test && node scripts/check-generated.mjs && streamdeck validate com.jelicanin.limitbeacon.sdPlugin"
   },
   "dependencies": {
