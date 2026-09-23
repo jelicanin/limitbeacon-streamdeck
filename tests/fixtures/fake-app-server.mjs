@@ -67,9 +67,18 @@ lines.on("line", (line) => {
       }
       break;
     case "close-stdin":
-      process.stdin.pause();
-      closeSync(0);
-      send({ id: message.id, result: true });
+      lines.close();
+      process.stdin.once("close", () => {
+        // Close libuv's stream handle first, including its Windows duplicate,
+        // then the original stdio descriptor when the runtime leaves it open.
+        try {
+          closeSync(0);
+        } catch (error) {
+          if (error.code !== "EBADF") throw error;
+        }
+        send({ id: message.id, result: true });
+      });
+      process.stdin.destroy();
       break;
     case "echo":
       send({ id: message.id, result: message.params });
