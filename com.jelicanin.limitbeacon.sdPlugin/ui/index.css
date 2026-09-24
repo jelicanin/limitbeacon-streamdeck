@@ -7,9 +7,9 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { width: 100%; height: 100%; overflow: hidden; }
+html, body { width: 100%; min-height: 100%; overflow-x: hidden; overflow-y: auto; }
 body { margin: 0; background: #2d2d2d; }
-main { width: 100%; max-width: 100%; padding: 10px 12px 12px; overflow: hidden; }
+main { width: 100%; max-width: 100%; padding: 10px 12px 12px; }
 
 .tabs {
   display: grid;
@@ -35,7 +35,7 @@ main { width: 100%; max-width: 100%; padding: 10px 12px 12px; overflow: hidden; 
 }
 
 .tabs button[aria-selected="true"] { color: #f6f8f9; background: #414141; }
-.tab-panel { width: 100%; max-width: 100%; overflow: hidden; }
+.tab-panel { width: 100%; max-width: 100%; }
 
 .status {
   display: grid;

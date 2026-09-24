@@ -3,6 +3,9 @@ import {
   type DidReceiveSettingsEvent,
   type DialDownEvent,
   type DialRotateEvent,
+  type PropertyInspectorDidAppearEvent,
+  type PropertyInspectorDidDisappearEvent,
+  type SendToPluginEvent,
   SingletonAction,
   type TouchTapEvent,
   type WillAppearEvent,
@@ -24,6 +27,15 @@ import type {
   UsageSubscriber,
 } from "../services/usage-service.js";
 
+import {
+  InspectorConnection,
+  isInspectorRefreshCommand,
+  type InspectorSender,
+} from "../ui/inspector-connection.js";
+
+type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
+type JsonObject = { [key: string]: JsonValue };
+
 type Service = Pick<UsageService, "subscribe" | "refresh">;
 
 export type DialTarget = {
@@ -40,14 +52,17 @@ type VisibleDial = {
   unsubscribe: () => void;
   pendingTicks: number;
   rotationTask: Promise<void> | null;
+  generation: number;
 };
 
 export class LimitBrowserController {
   readonly #service: Service;
+  readonly #inspector: InspectorConnection;
   readonly #dials = new Map<string, VisibleDial>();
 
   constructor(service: Service) {
     this.#service = service;
+    this.#inspector = new InspectorConnection((subscriber) => service.subscribe(subscriber));
   }
 
   appear(target: DialTarget, rawSettings: unknown): void {
@@ -59,25 +74,40 @@ export class LimitBrowserController {
       unsubscribe: () => {},
       pendingTicks: 0,
       rotationTask: null,
+      generation: 0,
     };
+    this.#dials.set(target.id, dial);
     const subscriber: UsageSubscriber = (state) => {
+      this.#invalidate(dial);
       dial.state = state;
       this.#render(dial);
     };
     dial.unsubscribe = this.#service.subscribe(subscriber);
-    this.#dials.set(target.id, dial);
   }
 
   disappear(id: string): void {
-    this.#dials.get(id)?.unsubscribe();
+    const dial = this.#dials.get(id);
+    if (dial !== undefined) {
+      this.#invalidate(dial);
+      dial.unsubscribe();
+    }
     this.#dials.delete(id);
   }
 
   settingsChanged(id: string, rawSettings: unknown): void {
     const dial = this.#dials.get(id);
     if (dial === undefined) return;
+    this.#invalidate(dial);
     dial.settings = normalizeDialSettings(rawSettings);
     this.#render(dial);
+  }
+
+  inspectorAppeared(id: string, send: InspectorSender): void {
+    this.#inspector.appear(id, send);
+  }
+
+  inspectorDisappeared(id: string): void {
+    this.#inspector.disappear(id);
   }
 
   async rotate(id: string, ticks: number): Promise<void> {
@@ -100,6 +130,7 @@ export class LimitBrowserController {
   async touch(id: string): Promise<void> {
     const dial = this.#dials.get(id);
     if (dial === undefined) return;
+    this.#invalidate(dial);
     dial.settings.basis = dial.settings.basis === "remaining" ? "used" : "remaining";
     await this.#persistAndRender(dial);
   }
@@ -107,28 +138,30 @@ export class LimitBrowserController {
   async press(id: string): Promise<void> {
     const dial = this.#dials.get(id);
     if (dial === undefined) return;
+    const generation = this.#invalidate(dial);
     try {
       await dial.target.setFeedback({
         canvas: svgDataUrl(renderDial({ type: "message", tone: "loading", title: "Refreshing" })),
       });
       await this.#service.refresh();
-      this.#render(dial);
+      if (this.#isCurrent(dial, generation)) this.#render(dial);
     } catch {
-      await dial.target.showAlert();
+      if (this.#isCurrent(dial, generation)) await dial.target.showAlert();
     }
   }
 
   async #persistAndRender(dial: VisibleDial): Promise<void> {
+    const generation = ++dial.generation;
     try {
       await dial.target.setSettings({ ...dial.settings });
-      this.#render(dial);
+      if (this.#isCurrent(dial, generation)) this.#render(dial);
     } catch {
-      await dial.target.showAlert();
+      if (this.#isCurrent(dial, generation)) await dial.target.showAlert();
     }
   }
 
   async #drainRotations(dial: VisibleDial): Promise<void> {
-    while (dial.pendingTicks !== 0) {
+    while (this.#dials.get(dial.target.id) === dial && dial.pendingTicks !== 0) {
       const ticks = dial.pendingTicks;
       dial.pendingTicks = 0;
       const count = windowCount(dial.state);
@@ -150,15 +183,18 @@ export class LimitBrowserController {
     previousSettings: DialSettings,
     direction: -1 | 1,
   ): Promise<void> {
+    const generation = ++dial.generation;
     try {
       await dial.target.setSettings({ ...dial.settings });
+      if (!this.#isCurrent(dial, generation)) return;
       const from = toViewModel(dial.state, previousSettings);
       const to = toViewModel(dial.state, dial.settings);
       if (from.type !== "usage" || to.type !== "usage") {
-        this.#render(dial);
+        if (this.#isCurrent(dial, generation)) this.#render(dial);
         return;
       }
       for (let frame = 1; frame <= 12; frame += 1) {
+        if (!this.#isCurrent(dial, generation)) return;
         const linearProgress = frame / 13;
         const easedProgress = 1 - (1 - linearProgress) ** 2;
         await dial.target.setFeedback({
@@ -166,21 +202,39 @@ export class LimitBrowserController {
         });
         await frameDelay();
       }
-      this.#render(dial);
+      if (this.#isCurrent(dial, generation)) this.#render(dial);
     } catch {
-      await dial.target.showAlert();
+      if (this.#isCurrent(dial, generation)) await dial.target.showAlert();
     }
   }
 
+  #invalidate(dial: VisibleDial): number {
+    dial.pendingTicks = 0;
+    return ++dial.generation;
+  }
+
+  #isCurrent(dial: VisibleDial, generation: number): boolean {
+    return this.#dials.get(dial.target.id) === dial && dial.generation === generation;
+  }
+
   #render(dial: VisibleDial): void {
+    if (this.#dials.get(dial.target.id) !== dial) return;
     const image = svgDataUrl(renderDial(toViewModel(dial.state, dial.settings)));
-    void dial.target.setFeedback({ canvas: image }).catch(() => dial.target.showAlert());
+    const generation = dial.generation;
+    void dial.target.setFeedback({ canvas: image }).catch(async () => {
+      if (this.#isCurrent(dial, generation)) await dial.target.showAlert();
+    }).catch(() => {
+      // The device may disconnect before its fallback alert is delivered.
+    });
   }
 }
 
 @action({ UUID: "com.jelicanin.limitbeacon.limit-browser" })
 export class LimitBrowserAction extends SingletonAction {
-  constructor(private readonly controller: LimitBrowserController) {
+  constructor(
+    private readonly controller: LimitBrowserController,
+    private readonly sendToPropertyInspector: InspectorSender = async () => {},
+  ) {
     super();
   }
 
@@ -194,6 +248,18 @@ export class LimitBrowserAction extends SingletonAction {
 
   override onDidReceiveSettings(event: DidReceiveSettingsEvent): void {
     this.controller.settingsChanged(event.action.id, event.payload.settings);
+  }
+
+  override onPropertyInspectorDidAppear(event: PropertyInspectorDidAppearEvent): void {
+    this.controller.inspectorAppeared(event.action.id, this.sendToPropertyInspector);
+  }
+
+  override onPropertyInspectorDidDisappear(event: PropertyInspectorDidDisappearEvent): void {
+    this.controller.inspectorDisappeared(event.action.id);
+  }
+
+  override async onSendToPlugin(event: SendToPluginEvent<JsonValue, JsonObject>): Promise<void> {
+    if (isInspectorRefreshCommand(event.payload)) await this.controller.press(event.action.id);
   }
 
   override async onDialRotate(event: DialRotateEvent): Promise<void> {
@@ -212,10 +278,10 @@ export class LimitBrowserAction extends SingletonAction {
 function toViewModel(state: UsageServiceState, settings: DialSettings): DialViewModel {
   if (state.snapshot !== null) {
     const windows = [
-      windowViewModel("5H", state.snapshot.fiveHour, settings.basis),
+      windowViewModel("PRIMARY", state.snapshot.fiveHour, settings.basis),
       ...(state.snapshot.weekly === null
         ? []
-        : [windowViewModel("7D", state.snapshot.weekly, settings.basis)]),
+        : [windowViewModel("SECONDARY", state.snapshot.weekly, settings.basis)]),
     ];
     return {
       type: "usage",

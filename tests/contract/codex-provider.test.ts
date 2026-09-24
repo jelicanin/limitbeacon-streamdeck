@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   CodexAppServerProvider,
@@ -9,6 +10,7 @@ import {
 } from "../../src/providers/codex-app-server-provider.js";
 import {
   JsonlRpcProcessError,
+  JsonlRpcClient,
   JsonlRpcRemoteError,
 } from "../../src/providers/jsonl-rpc-client.js";
 
@@ -217,4 +219,167 @@ test("reset closes the current client and reconnects on the next read", async (t
   assert.equal(first.closeCount, 1);
   assert.equal(next.fiveHour.usedPercent, 48);
   assert.equal(starts, 2);
+});
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+test("simultaneous limit and token reads share initialization and release their only client", async () => {
+  const ready = deferred<RpcClientLike>();
+  const rpc = new FakeRpcClient([
+    await fixture("direct.json"),
+    await fixture("../token-usage/full.json"),
+  ]);
+  let starts = 0;
+  const provider = new CodexAppServerProvider({
+    createClient: () => {
+      starts += 1;
+      return ready.promise;
+    },
+  });
+  const limits = provider.read();
+  const tokens = provider.readTokenUsage();
+  ready.resolve(rpc);
+  try {
+    assert.equal((await limits).fiveHour.usedPercent, 24);
+    assert.equal((await tokens).summary.lifetimeTokens, 123_456_789);
+    assert.equal(starts, 1);
+  } finally {
+    await provider.close();
+  }
+  assert.equal(rpc.closeCount, 1);
+});
+
+test("close waits for initialization cleanup without allowing a request", async () => {
+  const ready = deferred<RpcClientLike>();
+  const rpc = new FakeRpcClient([]);
+  const provider = new CodexAppServerProvider({ createClient: () => ready.promise });
+  const read = assert.rejects(provider.read(), CodexProviderError);
+  let closed = false;
+  const closing = provider.close().then(() => {
+    closed = true;
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const returnedEarly = closed;
+  ready.resolve(rpc);
+  await Promise.all([read, closing]);
+  assert.equal(returnedEarly, false);
+  assert.equal(rpc.closeCount, 1);
+  assert.equal(rpc.calls.length, 0);
+  await assert.rejects(provider.read(), CodexProviderError);
+});
+
+test("reset waits for old initialization and keeps the new generation independent", async (t) => {
+  const ready = deferred<RpcClientLike>();
+  const old = new FakeRpcClient([]);
+  const fresh = new FakeRpcClient([await fixture("direct.json"), await fixture("direct.json")]);
+  let starts = 0;
+  const provider = new CodexAppServerProvider({
+    createClient: () => ++starts === 1 ? ready.promise : Promise.resolve(fresh),
+  });
+  t.after(() => provider.close());
+  const oldRead = assert.rejects(provider.read(), CodexProviderError);
+  let resetDone = false;
+  const resetting = provider.reset().then(() => {
+    resetDone = true;
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const returnedEarly = resetDone;
+  assert.equal((await provider.read()).fiveHour.usedPercent, 24);
+  ready.resolve(old);
+  await Promise.all([oldRead, resetting]);
+  assert.equal(returnedEarly, false);
+  assert.equal(old.closeCount, 1);
+  assert.equal(old.calls.length, 0);
+  assert.equal((await provider.read()).fiveHour.usedPercent, 24);
+  assert.equal(starts, 2);
+});
+
+test("a malformed response discards its poisoned client so a later refresh recovers", async (t) => {
+  let starts = 0;
+  const provider = new CodexAppServerProvider({
+    createClient: (onNotification) => JsonlRpcClient.start({
+      executable: process.execPath,
+      args: [
+        fileURLToPath(new URL("../fixtures/fake-app-server.mjs", import.meta.url)),
+        ++starts === 1 ? "malformed-limits" : "standard",
+      ],
+      initializeParams: {},
+      requestTimeoutMs: 1000,
+      onNotification,
+    }),
+  });
+  t.after(() => provider.close());
+  await assert.rejects(
+    provider.read(),
+    (error: unknown) => error instanceof CodexProviderError && error.code === "CODEX_INCOMPATIBLE",
+  );
+  assert.equal(starts, 1);
+  assert.equal((await provider.read()).fiveHour.usedPercent, 24);
+  assert.equal(starts, 2);
+});
+
+for (const phase of ["initialization", "shutdown"] as const) {
+  test(`close waits for reset cleanup during deferred ${phase}`, async () => {
+    const ready = deferred<RpcClientLike>();
+    const stopped = deferred<void>();
+    const rpc = new FakeRpcClient([await fixture("direct.json")]);
+    rpc.close = async () => {
+      rpc.closeCount += 1;
+      await stopped.promise;
+    };
+    const provider = new CodexAppServerProvider({ createClient: () => ready.promise });
+    const reading = provider.read();
+    const readFinished = phase === "initialization"
+      ? assert.rejects(reading, CodexProviderError)
+      : reading;
+    if (phase === "shutdown") {
+      ready.resolve(rpc);
+      await reading;
+    }
+    const resetting = provider.reset();
+    let closeFinished = false;
+    const closing = provider.close().then(() => { closeFinished = true; });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const finishedBeforeInitialization = closeFinished;
+    ready.resolve(rpc);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const finishedBeforeShutdown = closeFinished;
+    stopped.resolve();
+    await Promise.all([readFinished, resetting, closing]);
+    assert.equal(finishedBeforeInitialization, false);
+    assert.equal(finishedBeforeShutdown, false);
+    assert.equal(rpc.closeCount, 1);
+    assert.equal(rpc.calls.length, phase === "shutdown" ? 1 : 0);
+  });
+}
+
+test("close waits for discarded client shutdown before resolving", async () => {
+  const stopped = deferred<void>();
+  const stopping = deferred<void>();
+  const rpc = new FakeRpcClient([
+    new JsonlRpcProcessError("process exited", 17, "PROCESS_EXITED"),
+  ]);
+  rpc.close = async () => {
+    rpc.closeCount += 1;
+    stopping.resolve();
+    await stopped.promise;
+  };
+  const provider = new CodexAppServerProvider({ createClient: async () => rpc });
+  const reading = assert.rejects(provider.read(), CodexProviderError);
+  await stopping.promise;
+  let closeFinished = false;
+  const closing = provider.close().then(() => { closeFinished = true; });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const finishedBeforeShutdown = closeFinished;
+  stopped.resolve();
+  await Promise.all([reading, closing]);
+  assert.equal(finishedBeforeShutdown, false);
+  assert.equal(rpc.closeCount, 1);
+  assert.equal(rpc.calls.length, 1);
 });

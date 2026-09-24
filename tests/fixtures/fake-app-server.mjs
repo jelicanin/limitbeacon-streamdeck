@@ -1,8 +1,14 @@
+import { closeSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 const mode = process.argv[2] ?? "standard";
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
 const delayed = [];
+if (mode === "uncooperative" || mode === "broken-stdin") {
+  // A failsafe also bounds test cleanup when the production close implementation is broken.
+  setTimeout(() => process.exit(0), 2000);
+}
+if (mode === "uncooperative") process.on("SIGTERM", () => {});
 let initialized = false;
 let initializeParams = null;
 
@@ -46,6 +52,33 @@ lines.on("line", (line) => {
           clientName: initializeParams?.clientInfo?.name ?? null,
         },
       });
+      break;
+    case "process/id":
+      send({ id: message.id, result: process.pid });
+      break;
+    case "account/rateLimits/read":
+      if (mode === "malformed-limits") {
+        process.stdout.write('{"id":\n');
+      } else {
+        send({
+          id: message.id,
+          result: JSON.parse(readFileSync(new URL("./rate-limits/direct.json", import.meta.url), "utf8")),
+        });
+      }
+      break;
+    case "close-stdin":
+      lines.close();
+      process.stdin.once("close", () => {
+        // Close libuv's stream handle first, including its Windows duplicate,
+        // then the original stdio descriptor when the runtime leaves it open.
+        try {
+          closeSync(0);
+        } catch (error) {
+          if (error.code !== "EBADF") throw error;
+        }
+        send({ id: message.id, result: true });
+      });
+      process.stdin.destroy();
       break;
     case "echo":
       send({ id: message.id, result: message.params });
@@ -94,4 +127,6 @@ lines.on("line", (line) => {
   }
 });
 
-lines.on("close", () => process.exit(0));
+lines.on("close", () => {
+  if (mode !== "uncooperative" && mode !== "broken-stdin") process.exit(0);
+});

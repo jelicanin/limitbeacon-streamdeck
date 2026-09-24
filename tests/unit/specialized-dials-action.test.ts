@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  ActivityStatsAction,
+  CreditsSpendAction,
+  DailyTokensAction,
   buildActivityCards,
   buildCreditsCards,
   buildDailyCards,
@@ -55,7 +58,7 @@ test("daily cards use returned buckets and derive only the visible seven-day sum
   assert.equal(daily.length, 3);
   assert.deepEqual(daily.map((card) => card.kind === "daily" ? card.value : null), ["700K", "400K", "100K"]);
   assert.equal(daily[0]?.kind === "daily" ? daily[0].label : null, "TODAY");
-  assert.deepEqual(summary.map((card) => card.label), ["7D TOTAL", "DAILY AVG", "PEAK DAY"]);
+  assert.deepEqual(summary.map((card) => card.label), ["REPORTED TOTAL", "REPORTED AVG", "ACCOUNT PEAK"]);
   assert.deepEqual(summary.map((card) => card.value), ["1.2M", "400K", "2.4M"]);
 });
 
@@ -69,7 +72,7 @@ test("daily card dates include the localized two-digit year", () => {
 
 test("daily summary does not invent a peak when Codex omits it", () => {
   const snapshot = { ...tokenSnapshot, summary: { ...tokenSnapshot.summary, peakDailyTokens: null } };
-  assert.deepEqual(buildDailyCards(snapshot, true).map((card) => card.label), ["7D TOTAL", "DAILY AVG"]);
+  assert.deepEqual(buildDailyCards(snapshot, true).map((card) => card.label), ["REPORTED TOTAL", "REPORTED AVG"]);
 });
 
 test("credits cards include only account data supplied by Codex", () => {
@@ -213,7 +216,7 @@ test("touch toggles daily detail and summary but is inert for other specialized 
   await dailyController.touch(daily.id);
   await creditsController.touch(credits.id);
 
-  assert.match(latestSvg(daily), />7D TOTAL</u);
+  assert.match(latestSvg(daily), />REPORTED TOTAL</u);
   assert.deepEqual(daily.settings.at(-1), { activeIndex: 0, summary: true });
   assert.equal(credits.settings.length, 0);
 });
@@ -233,4 +236,128 @@ test("press refreshes the channel used by each specialized dial", async () => {
   assert.equal(service.tokenRefreshCount, 1);
   assert.equal(service.rateRefreshCount, 1);
   assert.equal(daily.alertCount + credits.alertCount, 0);
+});
+
+test("daily details and summaries share the latest seven calendar dates", () => {
+  const snapshot = { ...tokenSnapshot, daily: [
+    { startDate: "2026-07-14", tokens: 9_000 },
+    ...Array.from({ length: 8 }, (_, index) => ({ startDate: `2026-07-${22 - index}`, tokens: 100 })),
+  ] };
+  const detail = buildDailyCards(snapshot, false);
+  const summary = buildDailyCards(snapshot, true);
+  assert.equal(detail.length, 7);
+  assert.deepEqual(detail.map((card) => card.value), ["100", "100", "100", "100", "100", "100", "100"]);
+  assert.equal(summary[0]?.label, "7D TOTAL");
+  assert.equal(summary[0]?.value, "700");
+  assert.equal(summary[1]?.value, "100");
+});
+
+test("gapped daily coverage neither spans older dates nor invents zero days", () => {
+  const snapshot = { ...tokenSnapshot, daily: [
+    { startDate: "2026-07-22", tokens: 600 },
+    { startDate: "2026-07-20", tokens: 200 },
+    { startDate: "2026-07-16", tokens: 100 },
+    { startDate: "2026-07-15", tokens: 9_000 },
+  ] };
+  const detail = buildDailyCards(snapshot, false);
+  const summary = buildDailyCards(snapshot, true);
+  assert.equal(detail.length, 3);
+  assert.deepEqual(detail.map((card) => card.kind === "daily" ? card.bars : null), [[17, 33, 100], [17, 33, 100], [17, 33, 100]]);
+  assert.deepEqual(summary.slice(0, 2).map((card) => [card.label, card.value, card.detail]), [["REPORTED TOTAL", "900", "3 OF 7 DAYS"], ["REPORTED AVG", "300", "3 OF 7 DAYS"]]);
+});
+
+for (const interrupt of ["disappear", "touch", "settings", "state", "press"] as const) {
+  test(`specialized animation stops after ${interrupt} supersedes it`, async () => {
+    const service = new FakeService();
+    const controller = new SpecializedDialController(service, "daily");
+    const dial = new FakeDial("cancel");
+    controller.appear(dial, {});
+    let releaseFrame!: () => void;
+    const setFeedback = dial.setFeedback.bind(dial);
+    let block = true;
+    dial.setFeedback = async (feedback) => {
+      await setFeedback(feedback);
+      if (block) {
+        block = false;
+        await new Promise<void>((resolve) => { releaseFrame = resolve; });
+      }
+    };
+    const rotation = controller.rotate(dial.id, 1);
+    while (releaseFrame === undefined) await Promise.resolve();
+    if (interrupt === "disappear") controller.disappear(dial.id);
+    if (interrupt === "touch") await controller.touch(dial.id);
+    if (interrupt === "settings") controller.settingsChanged(dial.id, { summary: true });
+    if (interrupt === "state") for (const subscriber of service.tokenSubscribers) subscriber({ status: "error", snapshot: null, error: new Error("unavailable") });
+    if (interrupt === "press") await controller.press(dial.id);
+    const latest = latestSvg(dial);
+    const count = dial.feedback.length;
+    releaseFrame();
+    await rotation;
+    assert.equal(dial.feedback.length, count, "obsolete animation must not send another frame");
+    assert.equal(latestSvg(dial), latest);
+  });
+}
+
+for (const kind of ["daily", "credits", "activity"] as const) {
+  test(`${kind} inspector follows its own data channel and unsubscribes`, () => {
+    const service = new FakeService();
+    service.rateState = { status: "loading", snapshot: null, error: null };
+    const controller = new SpecializedDialController(service, kind);
+    const messages: unknown[] = [];
+    controller.inspectorAppeared("inspector", async (payload) => { messages.push(payload); });
+    assert.deepEqual(messages, [{ status: kind === "credits" ? "starting" : "connected" }]);
+    controller.inspectorDisappeared("inspector");
+    for (const subscriber of service.rateSubscribers) subscriber(service.rateState);
+    for (const subscriber of service.tokenSubscribers) subscriber(service.tokenState);
+    assert.equal(messages.length, 1);
+  });
+}
+
+
+for (const [kind, Action] of [["daily", DailyTokensAction], ["credits", CreditsSpendAction], ["activity", ActivityStatsAction]] as const) {
+  test(`${kind} inspector Retry refreshes only its own channel`, async () => {
+    const service = new FakeService();
+    const controller = new SpecializedDialController(service, kind);
+    controller.appear(new FakeDial("retry"), {});
+    const action = new Action(controller);
+    for (const command of ["ignored", "refresh"]) {
+      await action.onSendToPlugin({ type: "sendToPlugin", action: { id: "retry" }, payload: { command } } as unknown as Parameters<DailyTokensAction["onSendToPlugin"]>[0]);
+    }
+    assert.equal(service.rateRefreshCount, kind === "credits" ? 1 : 0);
+    assert.equal(service.tokenRefreshCount, kind === "credits" ? 0 : 1);
+  });
+}
+
+
+for (const interrupt of ["disappear", "settings"] as const) {
+  test(`specialized render failure cannot alert after ${interrupt}`, async () => {
+    const service = new FakeService();
+    const controller = new SpecializedDialController(service, "daily");
+    const dial = new FakeDial("late-error");
+    let rejectFeedback!: (error: Error) => void;
+    dial.setFeedback = () => new Promise<void>((_resolve, reject) => { rejectFeedback = reject; });
+    controller.appear(dial, {});
+    const rejectOldRender = rejectFeedback;
+    dial.setFeedback = async () => {};
+    if (interrupt === "disappear") controller.disappear(dial.id);
+    else controller.settingsChanged(dial.id, {});
+    rejectOldRender(new Error("closed connection"));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(dial.alertCount, 0);
+  });
+}
+
+test("specialized render alert failure does not create an unhandled rejection", async () => {
+  const service = new FakeService();
+  const controller = new SpecializedDialController(service, "daily");
+  const dial = new FakeDial("failed-alert");
+  dial.setFeedback = async () => { throw new Error("feedback unavailable"); };
+  dial.showAlert = async () => {
+    dial.alertCount += 1;
+    throw new Error("alert unavailable");
+  };
+  controller.appear(dial, {});
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(dial.alertCount, 1);
+  controller.disappear(dial.id);
 });

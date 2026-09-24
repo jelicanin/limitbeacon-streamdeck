@@ -54,6 +54,9 @@ export function mapTokenUsage(
   ) as TokenUsageSummary;
 
   const daily = (buckets ?? []).map((bucket) => mapDailyBucket(bucket));
+  if (new Set(daily.map((bucket) => bucket.startDate)).size !== daily.length) {
+    throw new TokenUsageValidationError("Daily token usage contains duplicate dates");
+  }
   daily.sort((left, right) => right.startDate.localeCompare(left.startDate));
 
   return { capturedAt, daily, summary, stale: false };
@@ -62,6 +65,12 @@ export function mapTokenUsage(
 function mapDailyBucket(value: unknown): DailyTokenUsage {
   if (!isRecord(value) || typeof value.startDate !== "string" || value.startDate.length === 0) {
     throw new TokenUsageValidationError("Daily token usage must include a start date");
+  }
+  const date = new Date(`${value.startDate}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value.startDate)
+    || !Number.isFinite(date.getTime())
+    || date.toISOString().slice(0, 10) !== value.startDate) {
+    throw new TokenUsageValidationError("Daily token usage must include a valid YYYY-MM-DD date");
   }
   return {
     startDate: value.startDate,

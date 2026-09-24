@@ -49,6 +49,10 @@ LimitBeacon includes four focused Stream Deck + dial actions:
 
 Rotate any dial to browse its cards and press it for an immediate refresh. Each dial keeps its own position and settings.
 
+Daily details and totals cover seven calendar dates ending on the newest returned date. Missing days are not treated as zero: incomplete coverage is labeled **Reported**, and averages use only the supplied days. The account peak is a separate metric and may fall outside the displayed period.
+
+Every action's Property Inspector shows its connection status and offers refresh or setup guidance for the data it uses.
+
 <table>
   <tr>
     <td width="50%"><img src="docs/assets/limitbeacon-dial-limit-browser.png" alt="Browse available Codex limits from a Stream Deck dial"></td>
@@ -136,6 +140,8 @@ npm run check
 ```
 
 The project uses TypeScript, the official Stream Deck SDK, and the public Codex App Server protocol. One persistent provider process and one shared scheduler serve every key, with caching and single-flight refresh to avoid duplicate work.
+
+Use Node.js 24 to match the Stream Deck runtime. CI runs full checks including plugin startup on macOS and Windows; `npm run check:portable` runs type checking, tests, deterministic builds, and package validation on Linux without launching the unsupported plugin runtime.
 
 ## License
 

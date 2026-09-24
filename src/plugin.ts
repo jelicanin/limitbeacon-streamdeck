@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 
 import streamDeck from "@elgato/streamdeck";
+import packageInfo from "../package.json" with { type: "json" };
 
 import {
   CodexLimitsAction,
@@ -19,12 +20,13 @@ import {
   SpecializedDialController,
 } from "./actions/specialized-dials-action.js";
 import { normalizeSettings } from "./domain/settings.js";
+import { readConnectionSettings, type ConnectionSettings } from "./domain/connection-settings.js";
 import { locateCodex, type LocatorDependencies } from "./platform/codex-locator.js";
 import { CodexAppServerProvider } from "./providers/codex-app-server-provider.js";
 import { JsonlRpcClient } from "./providers/jsonl-rpc-client.js";
 import { UsageService } from "./services/usage-service.js";
 
-let settings = normalizeSettings(undefined);
+let settings: ConnectionSettings = normalizeSettings(undefined);
 const locatorDependencies = nodeLocatorDependencies();
 const provider = new CodexAppServerProvider({
   createClient: async (onNotification) => {
@@ -37,7 +39,7 @@ const provider = new CodexAppServerProvider({
         clientInfo: {
           name: "limitbeacon",
           title: "LimitBeacon",
-          version: "0.1.0",
+          version: packageInfo.version,
         },
       },
     });
@@ -53,15 +55,25 @@ const creditsSpendController = new SpecializedDialController(usageService, "cred
 const activityStatsController = new SpecializedDialController(usageService, "activity");
 
 streamDeck.settings.onDidReceiveGlobalSettings((event) => {
-  void applySettings(event.settings);
+  void applySettings(event.settings).catch(() => {
+    streamDeck.logger.warn("Could not apply connection settings. Retry the connection.");
+  });
 });
 streamDeck.actions.registerAction(
   new CodexLimitsAction(controller, (payload) => streamDeck.ui.sendToPropertyInspector(payload)),
 );
-streamDeck.actions.registerAction(new LimitBrowserAction(limitBrowserController));
-streamDeck.actions.registerAction(new DailyTokensAction(dailyTokensController));
-streamDeck.actions.registerAction(new CreditsSpendAction(creditsSpendController));
-streamDeck.actions.registerAction(new ActivityStatsAction(activityStatsController));
+streamDeck.actions.registerAction(new LimitBrowserAction(
+  limitBrowserController, (payload) => streamDeck.ui.sendToPropertyInspector(payload),
+));
+streamDeck.actions.registerAction(new DailyTokensAction(
+  dailyTokensController, (payload) => streamDeck.ui.sendToPropertyInspector(payload),
+));
+streamDeck.actions.registerAction(new CreditsSpendAction(
+  creditsSpendController, (payload) => streamDeck.ui.sendToPropertyInspector(payload),
+));
+streamDeck.actions.registerAction(new ActivityStatsAction(
+  activityStatsController, (payload) => streamDeck.ui.sendToPropertyInspector(payload),
+));
 await streamDeck.connect();
 await applySettings(await streamDeck.settings.getGlobalSettings());
 
@@ -74,7 +86,11 @@ async function shutdown(): Promise<void> {
 }
 
 async function applySettings(rawSettings: unknown): Promise<void> {
-  const next = normalizeSettings(rawSettings);
+  const { settings: next, valid } = readConnectionSettings(rawSettings, settings);
+  if (!valid) {
+    streamDeck.logger.warn("Invalid connection settings were ignored; keeping the last valid settings.");
+    return;
+  }
   const executableChanged = next.codexExecutable !== settings.codexExecutable;
   settings = next;
   usageService.setRefreshInterval(next.refreshMinutes * 60_000);

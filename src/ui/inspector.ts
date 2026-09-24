@@ -75,7 +75,23 @@ window.connectElgatoStreamDeckSocket = (port, inspectorId, registerEvent, info, 
 };
 
 for (const button of tabButtons) {
+  button.tabIndex = button.getAttribute("aria-selected") === "true" ? 0 : -1;
   button.addEventListener("click", () => selectTab(button));
+  button.addEventListener("keydown", (event) => {
+    const buttons = Array.from(tabButtons);
+    const index = buttons.indexOf(button);
+    const targetIndex = event.key === "ArrowRight" ? (index + 1) % buttons.length
+      : event.key === "ArrowLeft" ? (index - 1 + buttons.length) % buttons.length
+      : event.key === "Home" ? 0
+      : event.key === "End" ? buttons.length - 1
+      : null;
+    if (targetIndex === null) return;
+    const target = buttons[targetIndex];
+    if (target === undefined) return;
+    event.preventDefault();
+    selectTab(target);
+    target.focus();
+  });
 }
 
 for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-open-url]")) {
@@ -288,6 +304,7 @@ function selectTab(selected: HTMLButtonElement): void {
   for (const button of tabButtons) {
     const active = button === selected;
     button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
     const panelId = button.getAttribute("aria-controls");
     if (panelId !== null) requiredElement(panelId).hidden = !active;
   }

@@ -42,7 +42,11 @@ export class JsonlRpcTimeoutError extends Error {
   }
 }
 
-export type ProcessDiagnosticReason = "PROCESS_EXITED" | "SPAWN_FAILED" | "STDERR_PRESENT";
+export type ProcessDiagnosticReason =
+  | "PROCESS_EXITED"
+  | "SPAWN_FAILED"
+  | "STDERR_PRESENT"
+  | "STDIN_FAILED";
 
 export class JsonlRpcProcessError extends Error {
   readonly exitCode: number | null;
@@ -93,6 +97,7 @@ export class JsonlRpcClient {
       this.#resolveExit = resolve;
     });
 
+    child.stdin.on("error", () => this.#failStdin());
     child.stdout.on("data", (chunk: Buffer) => this.#receiveStdout(chunk));
     child.stderr.on("data", () => {
       this.#stderrPresent = true;
@@ -185,21 +190,47 @@ export class JsonlRpcClient {
     }
 
     this.#child.stdin.end();
-    const forceKill = setTimeout(() => {
-      if (!this.#exited) {
-        this.#child.kill();
-      }
-    }, CLOSE_GRACE_MS);
-    forceKill.unref();
-    await this.#exitPromise;
-    clearTimeout(forceKill);
+    if (await this.#waitForExit(CLOSE_GRACE_MS)) return;
+    this.#child.kill("SIGTERM");
+    if (await this.#waitForExit(CLOSE_GRACE_MS)) return;
+    this.#child.kill("SIGKILL");
+    if (await this.#waitForExit(CLOSE_GRACE_MS)) return;
+
+    // A descendant may retain inherited pipes even after the direct child is killed.
+    this.#child.stdin.destroy();
+    this.#child.stdout.destroy();
+    this.#child.stderr.destroy();
+    this.#child.unref();
+  }
+
+  async #waitForExit(timeoutMs: number): Promise<boolean> {
+    if (this.#exited) return true;
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        this.#exitPromise.then(() => true),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(false), timeoutMs);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   #send(message: JsonObject): void {
     if (this.#closed || this.#exited || this.#child.stdin.destroyed) {
       throw new JsonlRpcProcessError("JSONL-RPC client is closed", null, "PROCESS_EXITED");
     }
-    this.#child.stdin.write(`${JSON.stringify(message)}\n`);
+    const encoded = `${JSON.stringify(message)}\n`;
+    try {
+      this.#child.stdin.write(encoded, (error) => {
+        if (error !== null && error !== undefined) this.#failStdin();
+      });
+    } catch {
+      this.#failStdin();
+      throw this.#fatalError;
+    }
   }
 
   #receiveStdout(chunk: Buffer): void {
@@ -308,6 +339,10 @@ export class JsonlRpcClient {
     }
   }
 
+  #failStdin(): void {
+    this.#fail(new JsonlRpcProcessError("Codex App Server input pipe failed", null, "STDIN_FAILED"));
+  }
+
   #failLineTooLong(): void {
     this.#fail(new JsonlRpcProtocolError("LINE_TOO_LONG", "JSONL-RPC line exceeds the byte limit"));
   }
@@ -318,9 +353,7 @@ export class JsonlRpcClient {
     }
     this.#fatalError = error;
     this.#rejectPending(error);
-    if (!this.#exited) {
-      this.#child.kill();
-    }
+    void this.close();
   }
 
   #rejectPending(error: Error): void {
