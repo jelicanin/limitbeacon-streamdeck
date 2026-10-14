@@ -1,4 +1,5 @@
-import { mapRateLimits, type UsageSnapshot, UsageValidationError } from "../domain/usage.js";
+import { UsageValidationError } from "../domain/usage.js";
+import { mapLimitGroups, type UsageCollection } from "../domain/limit-groups.js";
 import {
   mapTokenUsage,
   type TokenUsageSnapshot,
@@ -14,7 +15,7 @@ const RATE_LIMITS_METHOD = "account/rateLimits/read";
 const TOKEN_USAGE_METHOD = "account/usage/read";
 
 export interface UsageProvider {
-  read(): Promise<UsageSnapshot>;
+  read(): Promise<UsageCollection>;
   readTokenUsage(): Promise<TokenUsageSnapshot>;
   close(): Promise<void>;
   subscribeUpdates?(subscriber: () => void): () => void;
@@ -62,7 +63,7 @@ export class CodexAppServerProvider implements UsageProvider {
     return () => this.#updateSubscribers.delete(subscriber);
   }
 
-  async read(): Promise<UsageSnapshot> {
+  async read(): Promise<UsageCollection> {
     return mapProviderResponse(await this.#request(RATE_LIMITS_METHOD));
   }
 
@@ -203,17 +204,9 @@ export class CodexAppServerProvider implements UsageProvider {
   }
 }
 
-function mapProviderResponse(response: unknown): UsageSnapshot {
+function mapProviderResponse(response: unknown): UsageCollection {
   try {
-    const record = isRecord(response) ? response : undefined;
-    const byLimitId = isRecord(record?.rateLimitsByLimitId)
-      ? record.rateLimitsByLimitId
-      : undefined;
-    const rateLimits = isRecord(byLimitId?.codex) ? byLimitId.codex : record?.rateLimits;
-    return mapRateLimits({
-      rateLimits,
-      rateLimitResetCredits: record?.rateLimitResetCredits,
-    });
+    return mapLimitGroups(response);
   } catch (error) {
     if (error instanceof UsageValidationError) {
       throw new CodexProviderError(

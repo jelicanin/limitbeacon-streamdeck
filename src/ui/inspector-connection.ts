@@ -5,8 +5,15 @@ import type { InspectorStatusId } from "./inspector-model.js";
 
 type InspectorState = Pick<UsageServiceState, "status" | "error"> & {
   snapshot?: { capturedAt: number } | null;
+  collection?: UsageServiceState["collection"];
+  groupUnavailable?: boolean;
 };
-export type InspectorSender = (payload: { status: InspectorStatusId; lastSuccessAt: number | null }) => Promise<void>;
+export type InspectorPayload = {
+  status: InspectorStatusId;
+  lastSuccessAt: number | null;
+  limitGroups?: { id: string; label: string; available: boolean }[];
+};
+export type InspectorSender = (payload: InspectorPayload) => Promise<void>;
 type Subscribe = (subscriber: (state: InspectorState) => void) => () => void;
 
 export class InspectorConnection {
@@ -41,13 +48,16 @@ export function isInspectorRefreshCommand(value: unknown): boolean {
     && (value as Record<string, unknown>).command === "refresh";
 }
 
-export function inspectorConnectionPayload(state: InspectorState): {
-  status: InspectorStatusId; lastSuccessAt: number | null;
-} {
-  return { status: inspectorStatus(state), lastSuccessAt: state.snapshot?.capturedAt ?? null };
+export function inspectorConnectionPayload(state: InspectorState): InspectorPayload {
+  return { status: inspectorStatus(state), lastSuccessAt: state.snapshot?.capturedAt ?? null,
+    ...(state.collection === undefined ? {} : { limitGroups: state.collection.groups.map(group => ({
+      id: group.id, label: group.label, available: group.snapshot !== null,
+    })) }),
+  };
 }
 
 function inspectorStatus(state: InspectorState): InspectorStatusId {
+  if (state.groupUnavailable) return "group-unavailable";
   if (state.status === "ready") return "connected";
   if (state.status === "stale") return "stale";
   if (state.status === "idle" || state.status === "loading") return "starting";

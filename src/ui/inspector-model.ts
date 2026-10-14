@@ -1,5 +1,6 @@
 export type InspectorStatusId =
   | "connected"
+  | "group-unavailable"
   | "codex-missing"
   | "sign-in-required"
   | "starting"
@@ -16,6 +17,11 @@ export type InspectorStatusModel = {
 };
 
 const models: Record<InspectorStatusId, InspectorStatusModel> = {
+  "group-unavailable": {
+    title: "Group unavailable",
+    detail: "The selected limit group is unavailable. Choose another group or retry; your selection is saved.",
+    action: { kind: "button", label: "Retry", command: "refresh" },
+  },
   connected: {
     title: "Connected",
     detail: "LimitBeacon is reading usage through Codex.",

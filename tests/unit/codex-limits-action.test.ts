@@ -1,3 +1,4 @@
+import { mapLimitGroups } from "../../src/domain/limit-groups.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -181,4 +182,59 @@ test("property inspector receives the current connection status", () => {
   });
 
   assert.deepEqual(messages.at(-1), { status: "connected", lastSuccessAt: 1_000 });
+});
+
+
+test("key group selection is independent and never substitutes a missing group", () => {
+  const service = new FakeService();
+  const collection = mapLimitGroups({rateLimitsByLimitId: {
+    codex: {primary: {usedPercent: 10}},
+    other: {limitName: "Research", primary: {usedPercent: 70, windowDurationMins: 60}},
+  }}, 1000);
+  service.state = {...readyState, collection};
+  const controller = new CodexLimitsController(service);
+  const first = new FakeKey("first");
+  const second = new FakeKey("second");
+  controller.appear(first, {});
+  controller.appear(second, {limitGroupId: "other"});
+  assert.match(latestSvg(first), />90%</u);
+  assert.match(latestSvg(second), />30%</u);
+  assert.match(latestSvg(second), /Research/u);
+  controller.keySettingsChanged(first.id, {limitGroupId: "other"});
+  assert.match(latestSvg(first), />30%</u);
+  assert.equal(service.refreshCount, 0);
+  service.state = {...service.state, collection: mapLimitGroups({rateLimitsByLimitId: {codex: {primary: {usedPercent: 20}}}})};
+  service.rerender();
+  assert.match(latestSvg(second), /Group unavailable/u);
+  assert.doesNotMatch(latestSvg(second), />80%</u);
+  service.state = {...service.state, collection};
+  service.rerender();
+  assert.match(latestSvg(second), />30%</u);
+  controller.disappear(second.id);
+  controller.appear(second, {limitGroupId: "other"});
+  assert.match(latestSvg(second), />30%</u);
+});
+
+
+test("key inspector reports the selected group's timestamp and availability", () => {
+  const service = new FakeService();
+  const collection = mapLimitGroups({rateLimitsByLimitId: {
+    codex: {primary: {usedPercent: 10}}, other: {limitName: "Research", primary: {usedPercent: 70}},
+  }}, 2000);
+  collection.groups.find(group => group.id === "other")!.snapshot!.capturedAt = 1000;
+  collection.groups.find(group => group.id === "other")!.snapshot!.stale = true;
+  service.state = {...readyState, collection};
+  const controller = new CodexLimitsController(service);
+  const target = new FakeKey("selected");
+  controller.appear(target, {limitGroupId: "other"});
+  const sent: unknown[] = [];
+  controller.inspectorAppeared(target.id, async payload => {sent.push(payload);});
+  assert.equal((sent.at(-1) as {status?: string})?.status, "stale");
+  assert.equal((sent.at(-1) as {lastSuccessAt?: number | null})?.lastSuccessAt, 1000);
+  assert.equal((sent.at(-1) as {limitGroups?: unknown[]})?.limitGroups?.length, 2);
+  controller.keySettingsChanged(target.id, {limitGroupId: "missing"});
+  assert.equal((sent.at(-1) as {status?: string})?.status, "group-unavailable");
+  assert.equal((sent.at(-1) as {lastSuccessAt?: number | null})?.lastSuccessAt, null);
+  controller.inspectorDisappeared(target.id);
+  controller.disappear(target.id);
 });

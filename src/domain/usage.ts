@@ -24,7 +24,7 @@ export type AccountHealth = {
 
 export type UsageSnapshot = {
   capturedAt: number;
-  fiveHour: UsageWindow;
+  fiveHour: UsageWindow | null;
   weekly: UsageWindow | null;
   planLabel: string | null;
   accountHealth: AccountHealth;
@@ -102,7 +102,7 @@ export function mapRateLimits(response: unknown, capturedAt = Date.now()): Usage
   }
 
   const rateLimits = response.rateLimits;
-  if (!isRecord(rateLimits.primary)) {
+  if (rateLimits.primary !== null && !isRecord(rateLimits.primary)) {
     throw new UsageValidationError(
       "MISSING_PRIMARY_USAGE",
       "Codex response does not contain a primary rate-limit window",
@@ -112,7 +112,7 @@ export function mapRateLimits(response: unknown, capturedAt = Date.now()): Usage
   const secondary = rateLimits.secondary;
   return {
     capturedAt,
-    fiveHour: mapWindow(rateLimits.primary, "five-hour"),
+    fiveHour: rateLimits.primary === null ? null : mapWindow(rateLimits.primary, "primary"),
     weekly:
       secondary === undefined || secondary === null ? null : mapWindow(secondary, "weekly"),
     planLabel: typeof rateLimits.planType === "string" ? rateLimits.planType : null,

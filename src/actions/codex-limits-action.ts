@@ -15,6 +15,7 @@ import { CodexProviderError } from "../providers/codex-app-server-provider.js";
 import { CodexLocatorError } from "../platform/codex-locator.js";
 import { getSystemLocale } from "../platform/system-locale.js";
 import { inspectorConnectionPayload } from "../ui/inspector-connection.js";
+import { selectUsageGroup } from "../services/usage-service.js";
 import { renderKey, type KeyViewModel, type Severity } from "../render/key-renderer.js";
 import type {
   UsageService,
@@ -104,6 +105,7 @@ export class CodexLimitsController {
   }
 
   #render(key: VisibleKey, state: UsageServiceState): void {
+    state = selectUsageGroup(state, key.settings.limitGroupId);
     const image = renderKey(toViewModel(state, key.settings));
     void key.target.setImage(svgDataUrl(image)).catch(() => key.target.showAlert());
     if (this.#inspector?.keyId === key.target.id) {
@@ -156,15 +158,21 @@ function toViewModel(
   state: UsageServiceState,
   settings: LimitBeaconSettings,
 ): KeyViewModel {
+  if (state.groupUnavailable) {
+    return { type: "message", tone: "error", title: "Group unavailable", hint: "Choose a group" };
+  }
   if (state.snapshot !== null) {
+    const primary = state.snapshot.fiveHour ?? state.snapshot.weekly;
+    if (primary === null) return { type: "message", tone: "setup", title: "Usage unavailable", hint: "Press to retry" };
     return {
       type: "usage",
       basis: settings.basis,
       displayStyle: settings.displayStyle,
       stale: state.status === "stale" || state.snapshot.stale,
-      fiveHour: windowViewModel(state.snapshot.fiveHour, settings),
+      ...(showGroupLabel(state, settings.limitGroupId) ? { groupLabel: state.groupLabel! } : {}),
+      fiveHour: windowViewModel(primary, settings),
       weekly:
-        state.snapshot.weekly === null
+        state.snapshot.weekly === null || state.snapshot.fiveHour === null
           ? null
           : windowViewModel(state.snapshot.weekly, settings),
     };
@@ -185,6 +193,11 @@ function toViewModel(
     }
   }
   return { type: "message", tone: "error", title: "Could not refresh", hint: "Press to retry" };
+}
+
+function showGroupLabel(state: UsageServiceState, selection: string): boolean {
+  return state.groupLabel !== undefined && (selection !== "" || (state.collection?.groups.length ?? 0) > 1
+    || state.collection?.defaultGroupId !== "codex");
 }
 
 function windowViewModel(

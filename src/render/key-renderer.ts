@@ -5,6 +5,7 @@ export type UsageKeyViewModel = {
   basis: "remaining" | "used";
   displayStyle: "bars" | "rings";
   stale: boolean;
+  groupLabel?: string;
   fiveHour: UsageRow;
   weekly: UsageRow | null;
 };
@@ -51,10 +52,10 @@ function renderUsage(model: UsageKeyViewModel): string {
     ? `${renderRow(model.fiveHour, basis, -2, 58)}${renderRow(model.weekly, basis, 78, 144)}`
     : renderSingleRow(model.fiveHour, basis);
 
-  return svg(`
+  return svg(withGroupLabel(`
     ${model.stale ? '<text x="132" y="15" class="stale">STALE</text>' : ""}
     ${rows}
-  `);
+  `, model.groupLabel));
 }
 
 function renderRingUsage(model: UsageKeyViewModel): string {
@@ -63,10 +64,17 @@ function renderRingUsage(model: UsageKeyViewModel): string {
     ? renderSingleRing(model.fiveHour, basis)
     : `${renderRing(model.fiveHour, basis, 38)}${renderRing(model.weekly, basis, 106)}`;
 
-  return svg(`
+  return svg(withGroupLabel(`
     ${model.stale ? '<text x="132" y="15" class="stale">STALE</text>' : ""}
     ${rings}
-  `);
+  `, model.groupLabel));
+}
+
+function withGroupLabel(content: string, label: string | undefined): string {
+  if (label === undefined) return content;
+  const short = [...label].length > 20 ? [...label].slice(0, 19).join("") + "…" : label;
+  return `<text x="72" y="13" fill="#A9C0CF" font-size="10" text-anchor="middle">${escapeXml(short)}</text>
+    <g transform="translate(0 20) scale(1 0.85)">${content}</g>`;
 }
 
 function renderRing(row: UsageRow, basis: string, x: number): string {

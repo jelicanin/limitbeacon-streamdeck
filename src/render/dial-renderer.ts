@@ -14,6 +14,7 @@ export type DialViewModel =
       displayStyle: "bars" | "rings";
       activeIndex: number;
       stale: boolean;
+      groupLabel?: string;
       windows: DialUsageRow[];
     }
   | {
@@ -93,13 +94,17 @@ function renderUsageCard(
     ? model.basis === "remaining" ? 0 : 1
     : index;
 
-  return `
+  const content = `
     ${neighborMarkup}
     <rect x="18" y="3" width="164" height="94" rx="12" class="card" stroke="${active.severity === "healthy" ? "none" : color}"/>
     ${visualization}
     ${model.stale ? '<text x="173" y="16" class="stale">STALE</text>' : ""}
     ${showNavigation ? renderDots(dotIndex, dotCount, color) : ""}
   `;
+  if (model.groupLabel === undefined) return content;
+  const label = [...model.groupLabel].length > 28 ? [...model.groupLabel].slice(0, 27).join("") + "…" : model.groupLabel;
+  return `<text x="100" y="11" fill="#A9C0CF" font-size="10" text-anchor="middle">${escapeXml(label)}</text>
+    <g transform="translate(0 14) scale(1 0.86)">${content}</g>`;
 }
 
 function renderRing(active: DialUsageRow, color: string, basis: string): string {
