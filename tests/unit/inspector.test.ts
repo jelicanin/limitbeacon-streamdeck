@@ -37,7 +37,7 @@ class Element extends EventTarget {
 class Input extends Element {}
 class RadioList { value = ""; }
 
-function setup(actionName = "codex-limits") {
+function setup(actionName = "codex-limits", settings: object = {}) {
   const nodes: Element[] = [];
   for (const match of html.matchAll(/<([a-z][\w-]*)\b([^>]*)>/giu)) {
     const tag = match[1]!;
@@ -56,10 +56,15 @@ function setup(actionName = "codex-limits") {
   };
   const byId = (id: string) => nodes.find(node => node.getAttribute("id") === id)!;
   const form = byId("settings-form") as Element & { elements: { namedItem(name: string): Element | RadioList | null } };
+  const radioValues = new Map<string, RadioList>();
   form.elements = {
     namedItem(name) {
       const fields = nodes.filter(node => node.name === name);
-      return fields.length > 1 ? new RadioList() : fields[0] ?? null;
+      if (fields.length > 1) {
+        if (!radioValues.has(name)) radioValues.set(name, new RadioList());
+        return radioValues.get(name)!;
+      }
+      return fields[0] ?? null;
     },
   };
   const sent: Record<string, unknown>[] = [];
@@ -79,14 +84,23 @@ function setup(actionName = "codex-limits") {
       createElement: (tag: string) => new Element(tag),
       documentElement: nodes[0],
     },
+    FormData: class { get(name: string) { return form.elements.namedItem(name)?.value ?? null; } },
     WebSocket: Socket, HTMLInputElement: Input, HTMLSelectElement: Input, RadioNodeList: RadioList,
   });
   window.connectElgatoStreamDeckSocket("12345", "inspector-1", "registerPropertyInspector", "{}", JSON.stringify({
-    action: `com.jelicanin.limitbeacon.${actionName}`, payload: { settings: {} },
+    action: `com.jelicanin.limitbeacon.${actionName}`, payload: { settings },
   }));
   socket.dispatchEvent(new Event("open"));
+  socket.dispatchEvent(new MessageEvent("message", {data: JSON.stringify({event: "didReceiveGlobalSettings", payload: {settings: {}}})}));
   return {
     byId, sent, nodes,
+    change(name: string, value: string) {
+      const input = form.elements.namedItem(name) as Element;
+      input.value = value;
+      const event = new Event("change");
+      Object.defineProperty(event, "target", {value: input});
+      form.dispatchEvent(event);
+    },
     receive(payload: unknown) {
       socket.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({event: "sendToPropertyInspector", payload}) }));
     },
@@ -164,5 +178,39 @@ test("inspector shows the last successful update and rejects invalid timestamps"
   for (const value of [null, -1, 1e30, "<script>bad</script>"]) {
     host.receive({status: "error", lastSuccessAt: value});
     assert.equal(time.hidden, true);
+  }
+});
+
+
+for (const action of ["codex-limits", "limit-browser"]) {
+  test(`${action} saves the selected group locally and preserves it when options disappear`, () => {
+    const host = setup(action, {limitGroupId: "research", activeIndex: 1});
+    host.receive({status: "connected", lastSuccessAt: 1000, limitGroups: [
+      {id: "codex", label: "Codex", available: true},
+      {id: "research", label: "Research <safe>", available: true},
+    ]});
+    const select = host.byId("limit-group");
+    assert.ok(select, "A group selector must be available");
+    assert.equal(select.value, "research");
+    assert.equal(select.children.find(option => option.value === "research")?.textContent, "Research <safe>");
+    host.change("limitGroupId", "codex");
+    const message = host.sent.at(-1)!;
+    assert.equal(message.event, "setSettings");
+    assert.equal((message.payload as Record<string, unknown>).limitGroupId, "codex");
+    if (action === "limit-browser") assert.equal((message.payload as Record<string, unknown>).activeIndex, 1);
+    host.receive({status: "group-unavailable", lastSuccessAt: null, limitGroups: []});
+    assert.equal(select.value, "codex");
+    assert.match(select.children.find(option => option.value === "codex")?.textContent ?? "", /unavailable/i);
+    assert.equal(host.byId("status-title").textContent, "Group unavailable");
+    host.receive({status: "connected", lastSuccessAt: 2000, limitGroups: [{id: "codex", label: "Codex", available: true}]});
+    assert.equal(select.value, "codex");
+  });
+}
+
+test("specialized dials do not expose the limit-group selector", () => {
+  for (const action of ["daily-tokens", "credits-spend", "activity-stats"]) {
+    const host = setup(action);
+    assert.ok(host.byId("limit-group-field"));
+    assert.equal(host.byId("limit-group-field").hidden, true);
   }
 });

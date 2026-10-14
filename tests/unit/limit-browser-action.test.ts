@@ -1,3 +1,4 @@
+import { mapLimitGroups } from "../../src/domain/limit-groups.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -141,6 +142,7 @@ test("rotation browses limits independently for each dial", async () => {
   assert.match(latestSvg(first), />7D · LEFT</u);
   assert.match(latestSvg(second), />5H · LEFT</u);
   assert.deepEqual(first.settings.at(-1), {
+    limitGroupId: "",
     activeIndex: 1,
     basis: "remaining",
     displayStyle: "rings",
@@ -159,6 +161,7 @@ test("rotation toggles remaining and used when only one limit is available", asy
   assert.match(latestSvg(dial), />45%</u);
   assert.match(latestSvg(dial), />7D · USED</u);
   assert.deepEqual(dial.settings.at(-1), {
+    limitGroupId: "",
     activeIndex: 0,
     basis: "used",
     displayStyle: "rings",
@@ -212,6 +215,7 @@ test("touch toggles remaining and used for only that dial", async () => {
   assert.match(latestSvg(dial), />20%</u);
   assert.match(latestSvg(dial), />5H · USED</u);
   assert.deepEqual(dial.settings.at(-1), {
+    limitGroupId: "",
     activeIndex: 0,
     basis: "used",
     displayStyle: "rings",
@@ -269,7 +273,7 @@ test("dial press shows refresh feedback before new usage arrives", async () => {
 
 test("unknown duration never becomes a five-hour or weekly duration", async () => {
   const service = new FakeService();
-  service.state = { ...readyState, snapshot: { ...readyState.snapshot!, fiveHour: { ...readyState.snapshot!.fiveHour, durationMinutes: null }, weekly: { ...readyState.snapshot!.weekly!, durationMinutes: null } } };
+  service.state = { ...readyState, snapshot: { ...readyState.snapshot!, fiveHour: { ...readyState.snapshot!.fiveHour!, durationMinutes: null }, weekly: { ...readyState.snapshot!.weekly!, durationMinutes: null } } };
   const controller = new LimitBrowserController(service);
   const dial = new FakeDial("unknown");
   controller.appear(dial, {});
@@ -368,4 +372,70 @@ test("limit render alert failure does not create an unhandled rejection", async 
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(dial.alertCount, 1);
   controller.disappear(dial.id);
+});
+
+
+test("dial group selection is independent and never substitutes a missing group", () => {
+  const service = new FakeService();
+  const collection = mapLimitGroups({rateLimitsByLimitId: {
+    codex: {primary: {usedPercent: 10}},
+    other: {limitName: "Research", primary: {usedPercent: 70, windowDurationMins: 60}},
+  }}, 1000);
+  service.state = {...readyState, collection};
+  const controller = new LimitBrowserController(service);
+  const first = new FakeDial("first");
+  const second = new FakeDial("second");
+  controller.appear(first, {});
+  controller.appear(second, {limitGroupId: "other"});
+  assert.match(latestSvg(first), />90%</u);
+  assert.match(latestSvg(second), />30%</u);
+  assert.match(latestSvg(second), /Research/u);
+  controller.settingsChanged(first.id, {limitGroupId: "other"});
+  assert.match(latestSvg(first), />30%</u);
+  assert.equal(service.refreshCount, 0);
+  service.state = {...service.state, collection: mapLimitGroups({rateLimitsByLimitId: {codex: {primary: {usedPercent: 20}}}})};
+  for (const subscriber of service.subscribers) subscriber(service.state);
+  assert.match(latestSvg(second), /Group unavailable/u);
+  assert.doesNotMatch(latestSvg(second), />80%</u);
+  service.state = {...service.state, collection};
+  for (const subscriber of service.subscribers) subscriber(service.state);
+  assert.match(latestSvg(second), />30%</u);
+  controller.disappear(second.id);
+  controller.appear(second, {limitGroupId: "other"});
+  assert.match(latestSvg(second), />30%</u);
+});
+
+
+test("dial inspector reports the selected group's timestamp and availability", () => {
+  const service = new FakeService();
+  const collection = mapLimitGroups({rateLimitsByLimitId: {
+    codex: {primary: {usedPercent: 10}}, other: {limitName: "Research", primary: {usedPercent: 70}},
+  }}, 2000);
+  collection.groups.find(group => group.id === "other")!.snapshot!.capturedAt = 1000;
+  collection.groups.find(group => group.id === "other")!.snapshot!.stale = true;
+  service.state = {...readyState, collection};
+  const controller = new LimitBrowserController(service);
+  const target = new FakeDial("selected");
+  controller.appear(target, {limitGroupId: "other"});
+  const sent: { status?: string; lastSuccessAt?: number | null; limitGroups?: unknown[] }[] = [];
+  controller.inspectorAppeared(target.id, async payload => {sent.push(payload);});
+  assert.equal(sent.at(-1)?.status, "stale");
+  assert.equal(sent.at(-1)?.lastSuccessAt, 1000);
+  assert.equal(sent.at(-1)?.limitGroups?.length, 2);
+  controller.settingsChanged(target.id, {limitGroupId: "missing"});
+  assert.equal(sent.at(-1)?.status, "group-unavailable");
+  assert.equal(sent.at(-1)?.lastSuccessAt, null);
+  controller.inspectorDisappeared(target.id);
+  controller.disappear(target.id);
+});
+
+
+test("missing quota windows display unavailable instead of a zero percentage", () => {
+  const service = new FakeService();
+  service.state = {...readyState, snapshot: {...readyState.snapshot!, fiveHour: null, weekly: null}};
+  const controller = new LimitBrowserController(service);
+  const dial = new FakeDial("empty");
+  controller.appear(dial, {});
+  assert.match(latestSvg(dial), /Usage unavailable/u);
+  assert.doesNotMatch(latestSvg(dial), />0%</u);
 });

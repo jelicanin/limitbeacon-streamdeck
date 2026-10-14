@@ -1,4 +1,7 @@
+import { normalizeGroupSelection } from "./limit-groups.js";
+
 export type LimitBeaconSettings = {
+  limitGroupId: string;
   basis: "remaining" | "used";
   displayStyle: "bars" | "rings";
   refreshMinutes: number;
@@ -9,6 +12,7 @@ export type LimitBeaconSettings = {
 };
 
 const DEFAULT_SETTINGS: LimitBeaconSettings = {
+  limitGroupId: "",
   basis: "remaining",
   displayStyle: "bars",
   refreshMinutes: 5,
@@ -88,6 +92,7 @@ export function normalizeSettings(raw: unknown): LimitBeaconSettings {
   }
 
   return {
+    limitGroupId: normalizeGroupSelection(settings.limitGroupId),
     basis,
     displayStyle,
     refreshMinutes,

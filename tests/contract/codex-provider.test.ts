@@ -1,3 +1,4 @@
+import type { UsageCollection } from "../../src/domain/limit-groups.js";
 import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -15,6 +16,37 @@ import {
 } from "../../src/providers/jsonl-rpc-client.js";
 
 const fixtures = new URL("../fixtures/rate-limits/", import.meta.url);
+
+test("returns every limit group without letting a malformed group hide valid usage", async (t) => {
+  const rpc = new FakeRpcClient([{
+    rateLimits: { limitId: "codex", primary: { usedPercent: 99 } },
+    rateLimitsByLimitId: {
+      codex: { primary: { usedPercent: 20, windowDurationMins: 15 } },
+      research: { limitName: "Research", primary: { usedPercent: 70, windowDurationMins: 60 } },
+      broken: { primary: { usedPercent: 500 } },
+    },
+    rateLimitResetCredits: { availableCount: 2 },
+  }]);
+  const provider = new CodexAppServerProvider({ createClient: async () => rpc });
+  t.after(() => provider.close());
+  const collection = await provider.read();
+  assert.ok(Array.isArray(collection.groups), "All groups must survive provider mapping");
+  assert.equal(collection.defaultGroupId, "codex");
+  assert.equal(collection.groups.find(group => group.id === "research")?.snapshot?.fiveHour?.usedPercent, 70);
+  assert.equal(collection.groups.find(group => group.id === "codex")?.snapshot?.fiveHour?.usedPercent, 20);
+  assert.equal(collection.groups.find(group => group.id === "broken")?.snapshot, null);
+  assert.equal(collection.groups.find(group => group.id === "research")?.snapshot?.accountHealth.resetCreditsAvailable, 2);
+});
+
+test("chooses a deterministic group when only a multi-group response is available", async (t) => {
+  const rpc = new FakeRpcClient([{ rateLimitsByLimitId: {
+    z: { primary: { usedPercent: 90 } }, a: { primary: { usedPercent: 10 } },
+  } }]);
+  const provider = new CodexAppServerProvider({ createClient: async () => rpc });
+  t.after(() => provider.close());
+  const collection = await provider.read();
+  assert.equal(collection.defaultGroupId, "a");
+});
 
 async function fixture(name: string): Promise<unknown> {
   return JSON.parse(await readFile(new URL(name, fixtures), "utf8"));
@@ -59,11 +91,11 @@ test("maps primary and secondary rate-limit windows", async (t) => {
   t.after(() => provider.close());
   const before = Date.now();
 
-  const snapshot = await provider.read();
+  const snapshot = defaultSnapshot(await provider.read());
 
   assert.ok(snapshot.capturedAt >= before && snapshot.capturedAt <= Date.now());
-  assert.equal(snapshot.fiveHour.usedPercent, 24);
-  assert.equal(snapshot.fiveHour.remainingPercent, 76);
+  assert.equal(snapshot.fiveHour?.usedPercent, 24);
+  assert.equal(snapshot.fiveHour?.remainingPercent, 76);
   assert.equal(snapshot.weekly?.usedPercent, 61);
   assert.equal(snapshot.planLabel, "pro");
 });
@@ -73,9 +105,9 @@ test("prefers the codex bucket from rateLimitsByLimitId", async (t) => {
   const provider = new CodexAppServerProvider({ createClient: async () => rpc });
   t.after(() => provider.close());
 
-  const snapshot = await provider.read();
+  const snapshot = defaultSnapshot(await provider.read());
 
-  assert.equal(snapshot.fiveHour.usedPercent, 12);
+  assert.equal(snapshot.fiveHour?.usedPercent, 12);
   assert.equal(snapshot.weekly?.usedPercent, 34);
   assert.equal(snapshot.planLabel, "plus");
 });
@@ -107,7 +139,7 @@ test("preserves an unavailable secondary window", async (t) => {
   const provider = new CodexAppServerProvider({ createClient: async () => rpc });
   t.after(() => provider.close());
 
-  assert.equal((await provider.read()).weekly, null);
+  assert.equal(defaultSnapshot(await provider.read()).weekly, null);
 });
 
 test("reads token usage without serializing a params field", async (t) => {
@@ -130,7 +162,7 @@ test("preserves optional credits and spend data from rate limits", async (t) => 
   const provider = new CodexAppServerProvider({ createClient: async () => rpc });
   t.after(() => provider.close());
 
-  const snapshot = await provider.read();
+  const snapshot = defaultSnapshot(await provider.read());
 
   assert.equal(snapshot.accountHealth.credits?.balance, "12.50");
   assert.equal(snapshot.accountHealth.individualLimit?.remainingPercent, 60);
@@ -175,7 +207,7 @@ test("restarts the process once after a crash", async (t) => {
   });
   t.after(() => provider.close());
 
-  assert.equal((await provider.read()).fiveHour.usedPercent, 24);
+  assert.equal(defaultSnapshot(await provider.read()).fiveHour?.usedPercent, 24);
   assert.equal(starts, 2);
   assert.equal(crashed.closeCount, 1);
 });
@@ -198,7 +230,7 @@ test("a later read can try again after a failed restart", async (t) => {
     (error: unknown) =>
       error instanceof CodexProviderError && error.code === "CODEX_UNAVAILABLE",
   );
-  assert.equal((await provider.read()).fiveHour.usedPercent, 24);
+  assert.equal(defaultSnapshot(await provider.read()).fiveHour?.usedPercent, 24);
   assert.equal(starts, 3);
 });
 
@@ -214,10 +246,10 @@ test("reset closes the current client and reconnects on the next read", async (t
   await provider.read();
 
   await provider.reset();
-  const next = await provider.read();
+  const next = defaultSnapshot(await provider.read());
 
   assert.equal(first.closeCount, 1);
-  assert.equal(next.fiveHour.usedPercent, 48);
+  assert.equal(next.fiveHour?.usedPercent, 48);
   assert.equal(starts, 2);
 });
 
@@ -246,7 +278,7 @@ test("simultaneous limit and token reads share initialization and release their 
   const tokens = provider.readTokenUsage();
   ready.resolve(rpc);
   try {
-    assert.equal((await limits).fiveHour.usedPercent, 24);
+    assert.equal(defaultSnapshot(await limits).fiveHour?.usedPercent, 24);
     assert.equal((await tokens).summary.lifetimeTokens, 123_456_789);
     assert.equal(starts, 1);
   } finally {
@@ -290,13 +322,13 @@ test("reset waits for old initialization and keeps the new generation independen
   });
   await new Promise<void>((resolve) => setImmediate(resolve));
   const returnedEarly = resetDone;
-  assert.equal((await provider.read()).fiveHour.usedPercent, 24);
+  assert.equal(defaultSnapshot(await provider.read()).fiveHour?.usedPercent, 24);
   ready.resolve(old);
   await Promise.all([oldRead, resetting]);
   assert.equal(returnedEarly, false);
   assert.equal(old.closeCount, 1);
   assert.equal(old.calls.length, 0);
-  assert.equal((await provider.read()).fiveHour.usedPercent, 24);
+  assert.equal(defaultSnapshot(await provider.read()).fiveHour?.usedPercent, 24);
   assert.equal(starts, 2);
 });
 
@@ -320,7 +352,7 @@ test("a malformed response discards its poisoned client so a later refresh recov
     (error: unknown) => error instanceof CodexProviderError && error.code === "CODEX_INCOMPATIBLE",
   );
   assert.equal(starts, 1);
-  assert.equal((await provider.read()).fiveHour.usedPercent, 24);
+  assert.equal(defaultSnapshot(await provider.read()).fiveHour?.usedPercent, 24);
   assert.equal(starts, 2);
 });
 
@@ -399,3 +431,30 @@ for (const [code, message, expected] of [
       error instanceof CodexProviderError && error.code === expected);
   });
 }
+
+function defaultSnapshot(collection: UsageCollection) {
+  const snapshot = collection.groups.find(group => group.id === collection.defaultGroupId)?.snapshot;
+  assert.ok(snapshot);
+  return snapshot;
+}
+
+test("automatic selection uses the valid legacy view before another map group", async (t) => {
+  const rpc = new FakeRpcClient([{
+    rateLimits: {limitId: "codex", primary: {usedPercent: 25}},
+    rateLimitsByLimitId: {codex: {primary: {usedPercent: 900}}, other: {primary: {usedPercent: 50}}},
+  }]);
+  const provider = new CodexAppServerProvider({createClient: async () => rpc});
+  t.after(() => provider.close());
+  const collection = await provider.read();
+  assert.equal(collection.defaultGroupId, "codex");
+  assert.equal(defaultSnapshot(collection).fiveHour?.usedPercent, 25);
+});
+
+
+test("group labels with only control characters still receive a readable fallback", async (t) => {
+  const rpc = new FakeRpcClient([{ rateLimitsByLimitId: {secret_namespace: {limitName: "\u0000", primary: {usedPercent: 10}}} }]);
+  const provider = new CodexAppServerProvider({createClient: async () => rpc});
+  t.after(() => provider.close());
+  const collection = await provider.read();
+  assert.equal(collection.groups[0]?.label, "Limit group 1");
+});

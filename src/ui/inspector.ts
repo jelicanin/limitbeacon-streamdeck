@@ -24,10 +24,14 @@ const statusDetail = requiredElement("status-detail");
 const statusAction = requiredElement("status-action");
 const lastSuccess = requiredElement("last-success");
 const connectionTest = requiredElement<HTMLButtonElement>("test-connection");
+const groupSelect = requiredElement<HTMLSelectElement>("limit-group");
+let selectedGroupId = "";
+let groupOptions: { id: string; label: string; available: boolean }[] = [];
+let groupsReceived = false;
 const thresholdError = requiredElement("threshold-error");
 const tabButtons = document.querySelectorAll<HTMLButtonElement>("[role=tab]");
 const keySettingNames = new Set([
-  "basis", "displayStyle", "resetStyle", "warningThreshold", "criticalThreshold",
+  "basis", "displayStyle", "resetStyle", "warningThreshold", "criticalThreshold", "limitGroupId",
 ]);
 const globalSettingNames = new Set(["refreshMinutes", "codexExecutable"]);
 const DIAL_ACTION_ID = "com.jelicanin.limitbeacon.limit-browser";
@@ -39,7 +43,7 @@ const SPECIALIZED_DIALS = new Map([
   }],
   ["com.jelicanin.limitbeacon.credits-spend", {
     title: "Credits & Spend",
-    detail: "Review available credits, spend allowance, and reset credits when Codex provides them.",
+    detail: "Review credits and spend for the automatic group, plus account-wide reset credits.",
     controls: "Rotate to browse available cards. Press the dial to refresh.",
   }],
   ["com.jelicanin.limitbeacon.activity-stats", {
@@ -112,8 +116,9 @@ form.addEventListener("change", (event) => {
   const name = event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement
     ? event.target.name
     : "";
-  if (isBrowserDialInspector && name === "displayStyle") {
-    dialSettings = { ...dialSettings, displayStyle: selectedDisplayStyle() };
+  if (name === "limitGroupId") selectedGroupId = groupSelect.value;
+  if (isBrowserDialInspector && (name === "displayStyle" || name === "limitGroupId")) {
+    dialSettings = { ...dialSettings, displayStyle: selectedDisplayStyle(), limitGroupId: selectedGroupId };
     send({
       event: "setSettings",
       action: actionId,
@@ -152,6 +157,13 @@ function receive(raw: unknown): void {
     }
     if (message.event === "didReceiveGlobalSettings") setGlobalForm(payload.settings);
     if (message.event === "sendToPropertyInspector" && isStatus(payload.status)) {
+      if (Array.isArray(payload.limitGroups)) {
+        groupOptions = payload.limitGroups.filter((group): group is {id: string; label: string; available: boolean} =>
+          isRecord(group) && typeof group.id === "string" && group.id.length > 0 && group.id.length <= 256
+          && typeof group.label === "string" && group.label.length <= 80 && typeof group.available === "boolean");
+        groupsReceived = true;
+        renderGroupOptions();
+      }
       renderStatus(payload.status);
       const timestamp = payload.lastSuccessAt;
       const valid = typeof timestamp === "number" && timestamp >= 0 && Number.isFinite(new Date(timestamp).getTime());
@@ -165,6 +177,8 @@ function receive(raw: unknown): void {
 
 function setDialForm(raw: unknown): void {
   dialSettings = normalizeDialSettings(raw);
+  selectedGroupId = dialSettings.limitGroupId;
+  renderGroupOptions();
   setField("displayStyle", dialSettings.displayStyle);
 }
 
@@ -179,6 +193,7 @@ function configureInspector(): void {
     }
   }
   if (specializedDial !== undefined) {
+    requiredElement("limit-group-field").hidden = true;
     for (const element of document.querySelectorAll<HTMLElement>("[data-configurable-display]")) {
       element.hidden = true;
     }
@@ -196,6 +211,8 @@ function configureInspector(): void {
 
 function setKeyForm(raw: unknown): void {
   const settings = normalizeSettings(raw);
+  selectedGroupId = settings.limitGroupId;
+  renderGroupOptions();
   setField("basis", settings.basis);
   setField("displayStyle", settings.displayStyle);
   setField("resetStyle", settings.resetStyle);
@@ -213,6 +230,7 @@ function readForm(): LimitBeaconSettings | null {
   const data = new FormData(form);
   try {
     const settings = normalizeSettings({
+      limitGroupId: selectedGroupId,
       basis: data.get("basis"),
       displayStyle: data.get("displayStyle"),
       resetStyle: data.get("resetStyle"),
@@ -297,6 +315,7 @@ function readActionInfo(raw: string): { id: string; settings: unknown } {
 
 function keySettings(settings: LimitBeaconSettings): object {
   return {
+    limitGroupId: settings.limitGroupId,
     basis: settings.basis,
     displayStyle: settings.displayStyle,
     resetStyle: settings.resetStyle,
@@ -346,6 +365,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isStatus(value: unknown): value is InspectorStatusId {
   return typeof value === "string" && [
-    "connected", "codex-missing", "sign-in-required", "starting", "stale", "incompatible", "error",
+    "connected", "group-unavailable", "codex-missing", "sign-in-required", "starting", "stale", "incompatible", "error",
   ].includes(value);
+}
+
+function renderGroupOptions(): void {
+  groupSelect.replaceChildren();
+  const add = (id: string, label: string) => {
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = label;
+    groupSelect.append(option);
+  };
+  add("", "Automatic");
+  for (const group of groupOptions) add(group.id, group.available ? group.label : `${group.label} (unavailable)`);
+  if (selectedGroupId !== "" && !groupOptions.some(group => group.id === selectedGroupId)) {
+    add(selectedGroupId, groupsReceived ? "Selected group (unavailable)" : "Selected group");
+  }
+  groupSelect.value = selectedGroupId;
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { mapLimitGroups, type UsageCollection } from "../../src/domain/limit-groups.js";
 import type { UsageSnapshot } from "../../src/domain/usage.js";
 import type { TokenUsageSnapshot } from "../../src/domain/token-usage.js";
 import type { UsageProvider } from "../../src/providers/codex-app-server-provider.js";
@@ -58,13 +59,14 @@ class FakeProvider implements UsageProvider {
     private readonly tokenOutcomes: unknown[] = [],
   ) {}
 
-  async read(): Promise<UsageSnapshot> {
+  async read(): Promise<UsageCollection> {
     this.readCount += 1;
     const outcome = this.outcomes.shift();
     if (outcome instanceof Error) {
       throw outcome;
     }
-    return await (outcome as UsageSnapshot | Promise<UsageSnapshot>);
+    const value = await (outcome as UsageSnapshot | UsageCollection | Promise<UsageSnapshot>);
+    return "groups" in value ? value : { capturedAt: value.capturedAt, defaultGroupId: "codex", groups: [{id: "codex", label: "Codex", snapshot: value}] };
   }
 
   async readTokenUsage(): Promise<TokenUsageSnapshot> {
@@ -324,7 +326,7 @@ test("temporary errors retain the last successful snapshot as stale", async (t) 
   await assert.rejects(service.refresh(), /temporary/u);
 
   assert.equal(service.getState().status, "stale");
-  assert.equal(service.getState().snapshot?.fiveHour.remainingPercent, 80);
+  assert.equal(service.getState().snapshot?.fiveHour?.remainingPercent, 80);
   assert.equal(service.getState().snapshot?.stale, true);
 });
 
@@ -363,4 +365,57 @@ test("close closes the provider exactly once", async () => {
   await service.close();
 
   assert.equal(provider.closeCount, 1);
+});
+
+
+test("malformed group retains only its own stale data while another group updates", async (t) => {
+  const provider = new FakeProvider([
+    mapLimitGroups({rateLimitsByLimitId: {codex: {primary: {usedPercent: 10}}, other: {primary: {usedPercent: 60}}}}, 1000),
+    mapLimitGroups({rateLimitsByLimitId: {codex: {primary: {usedPercent: 20}}, other: {primary: {usedPercent: 900}}}}, 2000),
+    mapLimitGroups({rateLimitsByLimitId: {codex: {primary: {usedPercent: 30}}}}, 3000),
+  ]);
+  const service = new UsageService(provider);
+  t.after(() => service.close());
+  await service.refresh();
+  await service.refresh();
+  const other = service.getState().collection?.groups.find(group => group.id === "other");
+  assert.equal(other?.snapshot?.fiveHour?.usedPercent, 60);
+  assert.equal(other?.snapshot?.capturedAt, 1000);
+  assert.equal(other?.snapshot?.stale, true);
+  assert.equal(service.getState().snapshot?.fiveHour?.usedPercent, 20);
+  await service.refresh();
+  assert.equal(service.getState().collection?.groups.some(group => group.id === "other"), false);
+});
+
+test("a notification during an in-flight read schedules one full follow-up read", async (t) => {
+  const pending = deferred<UsageSnapshot>();
+  const provider = new FakeProvider([pending.promise, snapshot(2000)]);
+  const service = new UsageService(provider);
+  t.after(() => service.close());
+  service.subscribe(() => {});
+  const reading = service.refresh();
+  provider.emitUpdate();
+  provider.emitUpdate();
+  pending.resolve(snapshot(1000));
+  await reading;
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(provider.readCount, 2);
+  assert.equal(service.getState().snapshot?.capturedAt, 2000);
+});
+
+
+test("a group cache survives refresh when the automatic group has no valid snapshot", async (t) => {
+  const provider = new FakeProvider([
+    mapLimitGroups({rateLimitsByLimitId: {z: {primary: {usedPercent: 60}}}}, 1000),
+    mapLimitGroups({rateLimitsByLimitId: {a: {}, z: {primary: {usedPercent: 900}}}}, 2000),
+    mapLimitGroups({rateLimitsByLimitId: {a: {}, z: {primary: {usedPercent: 900}}}}, 3000),
+  ]);
+  const service = new UsageService(provider);
+  t.after(() => service.close());
+  await service.refresh();
+  await service.refresh();
+  await service.refresh();
+  const group = service.getState().collection?.groups.find(group => group.id === "z");
+  assert.equal(group?.snapshot?.capturedAt, 1000);
+  assert.equal(group?.snapshot?.stale, true);
 });

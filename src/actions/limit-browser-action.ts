@@ -13,6 +13,7 @@ import {
 } from "@elgato/streamdeck";
 
 import { normalizeDialSettings, type DialSettings } from "../domain/dial-settings.js";
+import { selectUsageGroup } from "../services/usage-service.js";
 import { CodexProviderError } from "../providers/codex-app-server-provider.js";
 import { CodexLocatorError } from "../platform/codex-locator.js";
 import {
@@ -29,8 +30,10 @@ import type {
 
 import {
   InspectorConnection,
+  inspectorConnectionPayload,
   isInspectorRefreshCommand,
   type InspectorSender,
+  type InspectorPayload,
 } from "../ui/inspector-connection.js";
 
 type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
@@ -59,6 +62,7 @@ export class LimitBrowserController {
   readonly #service: Service;
   readonly #inspector: InspectorConnection;
   readonly #dials = new Map<string, VisibleDial>();
+  #inspectorDisplay: { id: string; send: InspectorSender } | undefined;
 
   constructor(service: Service) {
     this.#service = service;
@@ -100,14 +104,26 @@ export class LimitBrowserController {
     this.#invalidate(dial);
     dial.settings = normalizeDialSettings(rawSettings);
     this.#render(dial);
+    void this.#sendInspector(id).catch(() => {});
   }
 
   inspectorAppeared(id: string, send: InspectorSender): void {
-    this.#inspector.appear(id, send);
+    this.#inspectorDisplay = { id, send };
+    this.#inspector.appear(id, payload => this.#sendInspector(id, payload));
   }
 
   inspectorDisappeared(id: string): void {
     this.#inspector.disappear(id);
+    if (this.#inspectorDisplay?.id === id) this.#inspectorDisplay = undefined;
+  }
+
+  async #sendInspector(id: string, fallback?: InspectorPayload): Promise<void> {
+    const dial = this.#dials.get(id);
+    if (dial !== undefined && this.#inspectorDisplay?.id === id) {
+      await this.#inspectorDisplay.send(inspectorConnectionPayload(selectUsageGroup(dial.state, dial.settings.limitGroupId)));
+    } else if (fallback !== undefined && this.#inspectorDisplay?.id === id) {
+      await this.#inspectorDisplay.send(fallback);
+    }
   }
 
   async rotate(id: string, ticks: number): Promise<void> {
@@ -164,7 +180,7 @@ export class LimitBrowserController {
     while (this.#dials.get(dial.target.id) === dial && dial.pendingTicks !== 0) {
       const ticks = dial.pendingTicks;
       dial.pendingTicks = 0;
-      const count = windowCount(dial.state);
+      const count = windowCount(selectUsageGroup(dial.state, dial.settings.limitGroupId));
       if (count === 0) return;
       const previousSettings = { ...dial.settings };
       if (count === 1) {
@@ -276,15 +292,20 @@ export class LimitBrowserAction extends SingletonAction {
 }
 
 function toViewModel(state: UsageServiceState, settings: DialSettings): DialViewModel {
+  state = selectUsageGroup(state, settings.limitGroupId);
+  if (state.groupUnavailable) return { type: "message", tone: "error", title: "Group unavailable" };
   if (state.snapshot !== null) {
     const windows = [
-      windowViewModel("PRIMARY", state.snapshot.fiveHour, settings.basis),
+      ...(state.snapshot.fiveHour === null ? [] : [windowViewModel("PRIMARY", state.snapshot.fiveHour, settings.basis)]),
       ...(state.snapshot.weekly === null
         ? []
         : [windowViewModel("SECONDARY", state.snapshot.weekly, settings.basis)]),
     ];
+    if (windows.length === 0) return { type: "message", tone: "setup", title: "Usage unavailable" };
     return {
       type: "usage",
+      ...(state.groupLabel !== undefined && (settings.limitGroupId !== "" || (state.collection?.groups.length ?? 0) > 1
+        || state.collection?.defaultGroupId !== "codex") ? { groupLabel: state.groupLabel } : {}),
       basis: settings.basis,
       displayStyle: settings.displayStyle,
       activeIndex: normalizeIndex(settings.activeIndex, windows.length),
@@ -342,7 +363,7 @@ function formatReset(resetsAt: number | null): string | null {
 
 function windowCount(state: UsageServiceState): number {
   if (state.snapshot === null) return 0;
-  return state.snapshot.weekly === null ? 1 : 2;
+  return Number(state.snapshot.fiveHour !== null) + Number(state.snapshot.weekly !== null);
 }
 
 function normalizeIndex(index: number, count: number): number {

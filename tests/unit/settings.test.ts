@@ -4,6 +4,7 @@ import test from "node:test";
 import { normalizeSettings } from "../../src/domain/settings.js";
 
 const defaults = {
+  limitGroupId: "",
   basis: "remaining",
   displayStyle: "bars",
   refreshMinutes: 5,
@@ -21,6 +22,7 @@ test("returns complete defaults for missing settings", () => {
 test("merges valid partial settings over defaults", () => {
   assert.deepEqual(
     normalizeSettings({
+      limitGroupId: "",
       basis: "used",
       displayStyle: "rings",
       refreshMinutes: 15,
@@ -31,6 +33,7 @@ test("merges valid partial settings over defaults", () => {
       ignoredFutureSetting: "safe to ignore",
     }),
     {
+      limitGroupId: "",
       basis: "used",
       displayStyle: "rings",
       refreshMinutes: 15,

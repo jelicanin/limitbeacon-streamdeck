@@ -71,7 +71,7 @@ test("does not invent a weekly window", () => {
   const snapshot = mapRateLimits({ rateLimits: { primary: primary(25) } }, capturedAt);
 
   assert.equal(snapshot.weekly, null);
-  assert.equal(snapshot.fiveHour.usedPercent, 25);
+  assert.equal(snapshot.fiveHour?.usedPercent, 25);
 });
 
 test("preserves absent reset and duration values as null", () => {
@@ -80,15 +80,15 @@ test("preserves absent reset and duration values as null", () => {
     capturedAt,
   );
 
-  assert.equal(snapshot.fiveHour.resetsAt, null);
-  assert.equal(snapshot.fiveHour.durationMinutes, null);
-  assert.notEqual(snapshot.fiveHour.resetsAt, capturedAt);
+  assert.equal(snapshot.fiveHour?.resetsAt, null);
+  assert.equal(snapshot.fiveHour?.durationMinutes, null);
+  assert.notEqual(snapshot.fiveHour?.resetsAt, capturedAt);
 });
 
 test("computes remaining percentage from used percentage", () => {
   const snapshot = mapRateLimits({ rateLimits: { primary: primary(33.3) } }, capturedAt);
 
-  assert.equal(snapshot.fiveHour.remainingPercent, 100 - 33.3);
+  assert.equal(snapshot.fiveHour?.remainingPercent, 100 - 33.3);
 });
 
 test("maps optional read-only credits and spend data", () => {
@@ -126,12 +126,17 @@ for (const [name, response] of [
   ["missing response", undefined],
   ["missing rate limits", {}],
   ["missing primary window", { rateLimits: {} }],
-  ["null primary window", { rateLimits: { primary: null } }],
 ] as const) {
   test(`rejects ${name}`, () => {
     assertUsageError(response, "MISSING_PRIMARY_USAGE");
   });
 }
+
+test("preserves an explicitly unavailable primary window instead of inventing zero usage", () => {
+  const snapshot = mapRateLimits({ rateLimits: { primary: null, secondary: primary(60) } }, capturedAt);
+  assert.equal(snapshot.fiveHour, null);
+  assert.equal(snapshot.weekly?.usedPercent, 60);
+});
 
 for (const value of ["25", "NaN", Number.NaN, Number.POSITIVE_INFINITY, -1, 100.01]) {
   test(`rejects invalid primary usage percentage ${String(value)}`, () => {
