@@ -101,6 +101,16 @@ function macCandidates(deps: LocatorDependencies): string[] {
     "/opt/homebrew/bin/codex",
     "/usr/local/bin/codex",
   );
+  // Desktop updates can move the bundled CLI and leave old PATH symlinks dangling.
+  // Keep standalone installs first and check only known application locations.
+  for (const applications of ["/Applications", posix.join(deps.homeDirectory, "Applications")]) {
+    const resources = posix.join(applications, "ChatGPT.app", "Contents", "Resources");
+    candidates.push(
+      posix.join(resources, "codex-cli", "bin", "codex"),
+      posix.join(resources, "codex-cli", "CodexCLI.app", "Contents", "MacOS", "codex"),
+      posix.join(resources, "codex"),
+    );
+  }
   return candidates;
 }
 

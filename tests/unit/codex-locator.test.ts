@@ -187,3 +187,35 @@ test("reports CODEX_NOT_FOUND when no candidate is executable", async () => {
 
   await assertNotFound(locateCodex("", deps));
 });
+
+for (const executable of [
+  "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
+  "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+  "/Applications/ChatGPT.app/Contents/Resources/codex",
+  "/Users/tester/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
+]) {
+  test(`finds a desktop-bundled Codex when CLI links are missing: ${executable}`, async () => {
+    const { deps } = fakeDependencies({
+      env: { PATH: "/opt/homebrew/bin:/usr/bin" },
+      files: { [executable]: 0o755 },
+    });
+    assert.equal(await locateCodex("", deps), executable);
+  });
+}
+
+test("a working standalone CLI takes precedence over the desktop fallback", async () => {
+  const { deps } = fakeDependencies({ files: {
+    "/usr/local/bin/codex": 0o755,
+    "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex": 0o755,
+  }});
+  assert.equal(await locateCodex("", deps), "/usr/local/bin/codex");
+});
+
+test("skips a non-executable desktop wrapper and finds the native executable", async () => {
+  const executable = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex";
+  const { deps } = fakeDependencies({ files: {
+    "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex": 0o644,
+    [executable]: 0o755,
+  }});
+  assert.equal(await locateCodex("", deps), executable);
+});
