@@ -51,7 +51,7 @@ Rotate any dial to browse its cards and press it for an immediate refresh. Each 
 
 Daily details and totals cover seven calendar dates ending on the newest returned date. Missing days are not treated as zero: incomplete coverage is labeled **Reported**, and averages use only the supplied days. The account peak is a separate metric and may fall outside the displayed period.
 
-Every action's Property Inspector shows its connection status and offers refresh or setup guidance for the data it uses.
+Every action's Property Inspector shows its connection status, the last successful update, and refresh or setup guidance for the data it uses. Use **Advanced → Test connection** to retry after setup changes.
 
 <table>
   <tr>
@@ -75,7 +75,7 @@ Every action's Property Inspector shows its connection status and offers refresh
 
 - macOS 13 or later, or Windows 10 or later
 - Stream Deck 7.1 or later
-- The official Codex CLI, signed in to your account
+- The official Codex CLI, signed in to your account, or the bundled Codex in ChatGPT for macOS
 
 ## Installation
 
@@ -112,7 +112,9 @@ Install the official Codex CLI and confirm that this command works in a terminal
 codex --version
 ```
 
-If Codex is installed in a non-standard location, select the key, open **Advanced**, and enter the absolute executable path.
+On macOS, LimitBeacon also checks known ChatGPT application locations, including the current bundled CLI layout, when standalone CLI paths are unavailable. A broken CLI symlink does not prevent this fallback.
+
+If Codex is installed in a non-standard location, select the key, open **Advanced**, and enter the absolute executable path. An explicit override is always respected: clear or correct it if that executable has moved. Use **Test connection** to retry.
 
 ### Sign-in required
 

@@ -305,7 +305,7 @@ for (const kind of ["daily", "credits", "activity"] as const) {
     const controller = new SpecializedDialController(service, kind);
     const messages: unknown[] = [];
     controller.inspectorAppeared("inspector", async (payload) => { messages.push(payload); });
-    assert.deepEqual(messages, [{ status: kind === "credits" ? "starting" : "connected" }]);
+    assert.deepEqual(messages, [{ status: kind === "credits" ? "starting" : "connected", lastSuccessAt: kind === "credits" ? null : 1 }]);
     controller.inspectorDisappeared("inspector");
     for (const subscriber of service.rateSubscribers) subscriber(service.rateState);
     for (const subscriber of service.tokenSubscribers) subscriber(service.tokenState);

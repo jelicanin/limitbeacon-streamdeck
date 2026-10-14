@@ -22,6 +22,8 @@ const status = document.querySelector<HTMLElement>(".status");
 const statusTitle = requiredElement("status-title");
 const statusDetail = requiredElement("status-detail");
 const statusAction = requiredElement("status-action");
+const lastSuccess = requiredElement("last-success");
+const connectionTest = requiredElement<HTMLButtonElement>("test-connection");
 const thresholdError = requiredElement("threshold-error");
 const tabButtons = document.querySelectorAll<HTMLButtonElement>("[role=tab]");
 const keySettingNames = new Set([
@@ -94,6 +96,11 @@ for (const button of tabButtons) {
   });
 }
 
+connectionTest.addEventListener("click", () => {
+  send({ event: "sendToPlugin", action: actionId, context: propertyInspectorId, payload: { command: "refresh" } });
+  selectTab(requiredElement<HTMLButtonElement>("general-tab"));
+});
+
 for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-open-url]")) {
   link.addEventListener("click", (event) => {
     event.preventDefault();
@@ -146,6 +153,10 @@ function receive(raw: unknown): void {
     if (message.event === "didReceiveGlobalSettings") setGlobalForm(payload.settings);
     if (message.event === "sendToPropertyInspector" && isStatus(payload.status)) {
       renderStatus(payload.status);
+      const timestamp = payload.lastSuccessAt;
+      const valid = typeof timestamp === "number" && timestamp >= 0 && Number.isFinite(new Date(timestamp).getTime());
+      lastSuccess.hidden = !valid;
+      lastSuccess.textContent = valid ? `Last successful update: ${new Date(timestamp).toLocaleString()}` : "";
     }
   } catch {
     // Ignore malformed host messages and keep the inspector usable.
@@ -224,6 +235,7 @@ function renderStatus(id: InspectorStatusId): void {
   statusTitle.textContent = model.title;
   statusDetail.textContent = model.detail;
   statusAction.replaceChildren();
+  connectionTest.disabled = id === "starting";
 
   if (model.action.kind === "link") {
     const href = model.action.href;

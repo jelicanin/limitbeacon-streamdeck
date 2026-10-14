@@ -236,10 +236,13 @@ function mapProviderError(error: unknown): Error {
     ) {
       return new CodexProviderError("SIGN_IN_REQUIRED", "Sign in to Codex to read usage limits");
     }
-    return new CodexProviderError(
-      "CODEX_INCOMPATIBLE",
-      "Codex App Server rejected the rate-limit request",
-    );
+    if (error.code === -32_600 || error.code === -32_601 || error.code === -32_602) {
+      return new CodexProviderError(
+        "CODEX_INCOMPATIBLE",
+        "Codex App Server does not support this usage request",
+      );
+    }
+    return unavailableError("Codex could not read usage. Try again shortly.");
   }
   return error instanceof Error ? error : unavailableError("Codex App Server is unavailable");
 }

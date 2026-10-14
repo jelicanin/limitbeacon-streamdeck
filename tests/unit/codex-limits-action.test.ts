@@ -180,5 +180,5 @@ test("property inspector receives the current connection status", () => {
     messages.push(payload);
   });
 
-  assert.deepEqual(messages.at(-1), { status: "connected" });
+  assert.deepEqual(messages.at(-1), { status: "connected", lastSuccessAt: 1_000 });
 });

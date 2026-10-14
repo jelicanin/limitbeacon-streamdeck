@@ -137,3 +137,32 @@ test("tabs support roving focus, arrows with wrapping, Home and End", () => {
   assert.equal(advanced.tabIndex, 0);
   assert.equal(host.byId("advanced-panel").hidden, false);
 });
+
+for (const action of ["codex-limits", "limit-browser", "daily-tokens", "credits-spend", "activity-stats"]) {
+  test(`${action} can test its connection even when Codex is missing`, () => {
+    const host = setup(action);
+    host.receive({status: "codex-missing", lastSuccessAt: null});
+    const button = host.byId("test-connection");
+    assert.ok(button, "Connection test must be available in Advanced");
+    button.click();
+    assert.deepEqual(host.sent.at(-1), {
+      event: "sendToPlugin", action: `com.jelicanin.limitbeacon.${action}`, context: "inspector-1", payload: {command: "refresh"},
+    });
+  });
+}
+
+test("inspector shows the last successful update and rejects invalid timestamps", () => {
+  const host = setup();
+  host.receive({status: "connected", lastSuccessAt: 1_792_000_000_000});
+  const time = host.byId("last-success");
+  assert.ok(time, "Last successful refresh must be visible");
+  assert.match(time.textContent, /^Last successful update: /);
+  assert.equal(time.hidden, false);
+  const lastText = time.textContent;
+  host.receive({status: "stale", lastSuccessAt: 1_792_000_000_000});
+  assert.equal(time.textContent, lastText);
+  for (const value of [null, -1, 1e30, "<script>bad</script>"]) {
+    host.receive({status: "error", lastSuccessAt: value});
+    assert.equal(time.hidden, true);
+  }
+});

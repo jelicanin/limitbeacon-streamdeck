@@ -383,3 +383,19 @@ test("close waits for discarded client shutdown before resolving", async () => {
   assert.equal(rpc.closeCount, 1);
   assert.equal(rpc.calls.length, 1);
 });
+
+for (const [code, message, expected] of [
+  [-32001, "Server overloaded; retry later.", "CODEX_UNAVAILABLE"],
+  [-32603, "Upstream request failed", "CODEX_UNAVAILABLE"],
+  [-32601, "Method not found", "CODEX_INCOMPATIBLE"],
+  [-32602, "Invalid params", "CODEX_INCOMPATIBLE"],
+  [-32600, "Not logged in", "SIGN_IN_REQUIRED"],
+] as const) {
+  test(`classifies RPC ${code} without misreporting temporary failures as incompatible`, async (t) => {
+    const rpc = new FakeRpcClient([new JsonlRpcRemoteError(code, message)]);
+    const provider = new CodexAppServerProvider({ createClient: async () => rpc });
+    t.after(() => provider.close());
+    await assert.rejects(provider.readTokenUsage(), (error: unknown) =>
+      error instanceof CodexProviderError && error.code === expected);
+  });
+}
