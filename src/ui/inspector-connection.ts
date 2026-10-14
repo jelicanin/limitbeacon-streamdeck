@@ -3,8 +3,10 @@ import { CodexProviderError } from "../providers/codex-app-server-provider.js";
 import type { UsageServiceState } from "../services/usage-service.js";
 import type { InspectorStatusId } from "./inspector-model.js";
 
-type InspectorState = Pick<UsageServiceState, "status" | "error">;
-export type InspectorSender = (payload: { status: InspectorStatusId }) => Promise<void>;
+type InspectorState = Pick<UsageServiceState, "status" | "error"> & {
+  snapshot?: { capturedAt: number } | null;
+};
+export type InspectorSender = (payload: { status: InspectorStatusId; lastSuccessAt: number | null }) => Promise<void>;
 type Subscribe = (subscriber: (state: InspectorState) => void) => () => void;
 
 export class InspectorConnection {
@@ -21,7 +23,7 @@ export class InspectorConnection {
     this.#current = current;
     current.unsubscribe = this.#subscribe((state) => {
       if (this.#current !== current) return;
-      void send({ status: inspectorStatus(state) }).catch(() => {
+      void send(inspectorConnectionPayload(state)).catch(() => {
         // An inspector can close while its last status is being sent.
       });
     });
@@ -37,6 +39,12 @@ export class InspectorConnection {
 export function isInspectorRefreshCommand(value: unknown): boolean {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     && (value as Record<string, unknown>).command === "refresh";
+}
+
+export function inspectorConnectionPayload(state: InspectorState): {
+  status: InspectorStatusId; lastSuccessAt: number | null;
+} {
+  return { status: inspectorStatus(state), lastSuccessAt: state.snapshot?.capturedAt ?? null };
 }
 
 function inspectorStatus(state: InspectorState): InspectorStatusId {

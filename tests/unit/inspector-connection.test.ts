@@ -92,3 +92,17 @@ test("inspector accepts only the refresh command", () => {
     assert.equal(isInspectorRefreshCommand(value), false);
   }
 });
+
+test("connection diagnostics retain the last success after a failure and expose no raw error", async (t) => {
+  const {service, fail} = tokenService();
+  t.after(() => service.close());
+  const connection = new InspectorConnection(subscriber => service.subscribeTokenUsage(subscriber));
+  const sent: unknown[] = [];
+  connection.appear("daily", async payload => { sent.push(payload); });
+  await service.refreshTokenUsage();
+  assert.deepEqual(sent.at(-1), {status: "connected", lastSuccessAt: 1});
+  fail(new Error("private upstream details"));
+  await assert.rejects(service.refreshTokenUsage());
+  assert.deepEqual(sent.at(-1), {status: "stale", lastSuccessAt: 1});
+  assert.equal(JSON.stringify(sent).includes("private upstream"), false);
+});

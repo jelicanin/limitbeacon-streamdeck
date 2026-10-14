@@ -79,7 +79,7 @@ label {
 }
 
 label span { min-width: 0; }
-input, select, .status button, .action-link {
+input, select, .status button, #test-connection, .action-link {
   width: 100%;
   min-width: 0;
   min-height: 30px;
@@ -147,7 +147,7 @@ input, select, .status button, .action-link {
 }
 
 input, select { padding: 4px 7px; }
-.status button, .action-link {
+.status button, #test-connection, .action-link {
   display: inline-grid;
   place-items: center;
   width: auto;
@@ -157,8 +157,8 @@ input, select { padding: 4px 7px; }
   text-decoration: none;
 }
 
-.status button:hover, .action-link:hover { background: #35373a; }
-.status button:disabled { cursor: default; opacity: .55; }
+.status button:hover, #test-connection:hover, .action-link:hover { background: #35373a; }
+.status button:disabled, #test-connection:disabled { cursor: default; opacity: .55; }
 button:focus-visible, input:focus-visible, select:focus-visible, .action-link:focus-visible {
   outline: 2px solid #39d0c3;
   outline-offset: 1px;
@@ -221,3 +221,5 @@ button:focus-visible, input:focus-visible, select:focus-visible, .action-link:fo
   .radio-setting { grid-template-columns: 1fr; gap: 4px; }
   main { padding-inline: 10px; }
 }
+
+#test-connection { margin-bottom: 8px; }

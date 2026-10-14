@@ -21,6 +21,7 @@
             <div>
               <strong id="status-title">Codex is starting</strong>
               <p id="status-detail">The first connection may take a moment.</p>
+              <p id="last-success" class="help" hidden></p>
               <div id="status-action"></div>
             </div>
           </div>
@@ -84,6 +85,8 @@
               <input name="codexExecutable" type="text" autocomplete="off" placeholder="Automatic" />
             </label>
             <p class="help">Leave blank unless Codex cannot be found automatically.</p>
+            <button id="test-connection" type="button">Test connection</button>
+            <p class="help">Refreshes the data used by this action and shows the connection result.</p>
           </fieldset>
 
         </section>
@@ -99,7 +102,7 @@
             <ol class="setup-steps">
               <li>
                 <strong>Install Codex</strong>
-                <span>Install the official Codex CLI.</span>
+                <span>Install the official Codex CLI, or use the Codex included with ChatGPT for macOS.</span>
                 <a href="https://developers.openai.com/codex/cli/" data-open-url>Open install guide</a>
               </li>
               <li>

@@ -14,6 +14,7 @@ import { normalizeSettings, type LimitBeaconSettings } from "../domain/settings.
 import { CodexProviderError } from "../providers/codex-app-server-provider.js";
 import { CodexLocatorError } from "../platform/codex-locator.js";
 import { getSystemLocale } from "../platform/system-locale.js";
+import { inspectorConnectionPayload } from "../ui/inspector-connection.js";
 import { renderKey, type KeyViewModel, type Severity } from "../render/key-renderer.js";
 import type {
   UsageService,
@@ -106,7 +107,7 @@ export class CodexLimitsController {
     const image = renderKey(toViewModel(state, key.settings));
     void key.target.setImage(svgDataUrl(image)).catch(() => key.target.showAlert());
     if (this.#inspector?.keyId === key.target.id) {
-      void this.#inspector.send({ status: inspectorStatus(state) }).catch(() => {});
+      void this.#inspector.send(inspectorConnectionPayload(state)).catch(() => {});
     }
   }
 }
@@ -244,16 +245,4 @@ function isRefreshCommand(value: unknown): boolean {
 
 function svgDataUrl(svg: string): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
-}
-
-function inspectorStatus(state: UsageServiceState): string {
-  if (state.status === "ready") return "connected";
-  if (state.status === "stale") return "stale";
-  if (state.status === "idle" || state.status === "loading") return "starting";
-  if (state.error instanceof CodexLocatorError) return "codex-missing";
-  if (state.error instanceof CodexProviderError) {
-    if (state.error.code === "SIGN_IN_REQUIRED") return "sign-in-required";
-    if (state.error.code === "CODEX_INCOMPATIBLE") return "incompatible";
-  }
-  return "error";
 }

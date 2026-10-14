@@ -23,7 +23,7 @@ const models: Record<InspectorStatusId, InspectorStatusModel> = {
   },
   "codex-missing": {
     title: "Codex not found",
-    detail: "Install Codex CLI, then retry.",
+    detail: "Install Codex, or check the executable override in Advanced. Then use Test connection.",
     action: {
       kind: "link",
       label: "Install Codex",

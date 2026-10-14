@@ -316,9 +316,9 @@ test("limit inspector receives live status and stops after closing", () => {
   const controller = new LimitBrowserController(service);
   const messages: unknown[] = [];
   controller.inspectorAppeared("inspector", async (payload) => { messages.push(payload); });
-  assert.deepEqual(messages, [{ status: "connected" }]);
+  assert.deepEqual(messages, [{ status: "connected", lastSuccessAt: 1_000 }]);
   for (const subscriber of service.subscribers) subscriber({ status: "loading", snapshot: null, error: null });
-  assert.deepEqual(messages.at(-1), { status: "starting" });
+  assert.deepEqual(messages.at(-1), { status: "starting", lastSuccessAt: null });
   controller.inspectorDisappeared("inspector");
   for (const subscriber of service.subscribers) subscriber(readyState);
   assert.equal(messages.length, 2);
