@@ -53,6 +53,14 @@ Daily details and totals cover seven calendar dates ending on the newest returne
 
 Every action's Property Inspector shows its connection status, the last successful update, and refresh or setup guidance for the data it uses. Use **Advanced → Test connection** to retry after setup changes.
 
+### Choose a limit group
+
+In **General → Limit group**, choose which group each **Codex Limits** key or **Limit Browser** dial displays. Two actions can show different groups while sharing one connection and refresh cycle. **Automatic** preserves the default Codex view for existing profiles; if it is unavailable, it uses the legacy view or a deterministically selected available group.
+
+Only groups returned by your account are offered. An explicitly selected group that disappears shows **Group unavailable** and stays selected until it returns or you choose another group. Invalid data retains only that group's last good values with a **STALE** label. Window labels follow the durations reported by Codex.
+
+Daily Tokens and Activity Stats remain account-wide. Credits & Spend continues to use the automatic group's credit and spend data, plus account-wide reset credits; values from separate groups are never added together.
+
 <table>
   <tr>
     <td width="50%"><img src="docs/assets/limitbeacon-dial-limit-browser.png" alt="Browse available Codex limits from a Stream Deck dial"></td>
