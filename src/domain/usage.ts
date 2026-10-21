@@ -6,6 +6,8 @@ export type UsageWindow = {
 };
 
 export type AccountHealth = {
+  /** Backend permission; an unavailable value does not establish recovery. */
+  ordinaryUsageAllowed?: boolean | null;
   credits: {
     hasCredits: boolean;
     unlimited: boolean;
@@ -127,6 +129,7 @@ function mapAccountHealth(rateLimits: UnknownRecord, response: UnknownRecord): A
   const resetCredits = response.rateLimitResetCredits;
 
   return {
+    ordinaryUsageAllowed: readOrdinaryUsageAllowed(response),
     credits:
       credits === undefined || credits === null
         ? null
@@ -142,6 +145,10 @@ function mapAccountHealth(rateLimits: UnknownRecord, response: UnknownRecord): A
         ? null
         : mapResetCreditCount(resetCredits),
   };
+}
+
+export function readOrdinaryUsageAllowed(response: Record<string, unknown>): boolean | null {
+  return readNullableBoolean(response, "ordinaryUsageAllowed");
 }
 
 function mapCredits(value: unknown): NonNullable<AccountHealth["credits"]> {

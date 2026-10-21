@@ -162,19 +162,22 @@ function toViewModel(
     return { type: "message", tone: "error", title: "Group unavailable", hint: "Choose a group" };
   }
   if (state.snapshot !== null) {
-    const primary = state.snapshot.fiveHour ?? state.snapshot.weekly;
-    if (primary === null) return { type: "message", tone: "setup", title: "Usage unavailable", hint: "Press to retry" };
+    if (state.snapshot.accountHealth.ordinaryUsageAllowed === false) {
+      return { type: "message", tone: "error", title: "Usage blocked", hint: "Check Codex" };
+    }
+    const selected = settings.window === "primary" ? state.snapshot.fiveHour
+      : settings.window === "secondary" ? state.snapshot.weekly
+      : state.snapshot.fiveHour ?? state.snapshot.weekly;
+    if (selected === null) {
+      return { type: "message", tone: "setup", title: settings.window === "automatic" ? "Usage unavailable" : "Window unavailable", hint: "Choose a window" };
+    }
     return {
       type: "usage",
       basis: settings.basis,
       displayStyle: settings.displayStyle,
       stale: state.status === "stale" || state.snapshot.stale,
       ...(showGroupLabel(state, settings.limitGroupId) ? { groupLabel: state.groupLabel! } : {}),
-      fiveHour: windowViewModel(primary, settings),
-      weekly:
-        state.snapshot.weekly === null || state.snapshot.fiveHour === null
-          ? null
-          : windowViewModel(state.snapshot.weekly, settings),
+      window: windowViewModel(selected, settings),
     };
   }
 

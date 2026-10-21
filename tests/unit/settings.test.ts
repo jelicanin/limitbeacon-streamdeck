@@ -5,6 +5,7 @@ import { normalizeSettings } from "../../src/domain/settings.js";
 
 const defaults = {
   limitGroupId: "",
+  window: "automatic",
   basis: "remaining",
   displayStyle: "bars",
   refreshMinutes: 5,
@@ -23,6 +24,7 @@ test("merges valid partial settings over defaults", () => {
   assert.deepEqual(
     normalizeSettings({
       limitGroupId: "",
+      window: "automatic",
       basis: "used",
       displayStyle: "rings",
       refreshMinutes: 15,
@@ -34,6 +36,7 @@ test("merges valid partial settings over defaults", () => {
     }),
     {
       limitGroupId: "",
+      window: "automatic",
       basis: "used",
       displayStyle: "rings",
       refreshMinutes: 15,
@@ -54,6 +57,7 @@ test("rejects thresholds in an impossible order", () => {
 
 for (const [field, value] of [
   ["basis", "available"],
+  ["window", "weekly"],
   ["displayStyle", "radar"],
   ["refreshMinutes", 0],
   ["refreshMinutes", 1.5],

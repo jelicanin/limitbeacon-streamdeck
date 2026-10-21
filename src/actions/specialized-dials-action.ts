@@ -374,7 +374,9 @@ export function buildCreditsCards(snapshot: UsageSnapshot): SpecializedCard[] {
   if (health.resetCreditsAvailable !== null) {
     cards.push(statCard("RESET CREDITS", String(health.resetCreditsAvailable), "AVAILABLE"));
   }
-  if (health.spendControlReached === true || health.rateLimitReachedType !== null) {
+  if (health.ordinaryUsageAllowed === false) {
+    cards.unshift({ kind: "stat", label: "ACCOUNT STATUS", value: "USAGE BLOCKED", detail: "CHECK CODEX", tone: "critical" });
+  } else if (health.spendControlReached === true || health.rateLimitReachedType !== null) {
     cards.push({ kind: "stat", label: "ACCOUNT STATUS", value: "LIMIT REACHED", detail: "CHECK CODEX", tone: "critical" });
   }
   return cards;

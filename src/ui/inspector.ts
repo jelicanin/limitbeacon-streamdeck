@@ -1,5 +1,6 @@
 import { normalizeSettings, type LimitBeaconSettings } from "../domain/settings.js";
 import { normalizeDialSettings, type DialSettings } from "../domain/dial-settings.js";
+import { normalizeNeoSettings } from "../domain/neo-settings.js";
 import {
   inspectorStatusModel,
   type InspectorStatusId,
@@ -31,7 +32,7 @@ let groupsReceived = false;
 const thresholdError = requiredElement("threshold-error");
 const tabButtons = document.querySelectorAll<HTMLButtonElement>("[role=tab]");
 const keySettingNames = new Set([
-  "basis", "displayStyle", "resetStyle", "warningThreshold", "criticalThreshold", "limitGroupId",
+  "basis", "displayStyle", "resetStyle", "warningThreshold", "criticalThreshold", "limitGroupId", "window",
 ]);
 const globalSettingNames = new Set(["refreshMinutes", "codexExecutable"]);
 const DIAL_ACTION_ID = "com.jelicanin.limitbeacon.limit-browser";
@@ -57,6 +58,8 @@ let propertyInspectorId = "";
 let actionId = "";
 let isDialInspector = false;
 let isBrowserDialInspector = false;
+let isNeoInspector = false;
+let neoSettings = normalizeNeoSettings(undefined);
 let specializedDial: { title: string; detail: string; controls: string } | undefined;
 let dialSettings = normalizeDialSettings(undefined);
 
@@ -65,10 +68,12 @@ window.connectElgatoStreamDeckSocket = (port, inspectorId, registerEvent, info, 
   const action = readActionInfo(actionInfo);
   actionId = action.id;
   isBrowserDialInspector = action.id === DIAL_ACTION_ID;
+  isNeoInspector = action.id === "com.jelicanin.limitbeacon.neo-limits";
   specializedDial = SPECIALIZED_DIALS.get(action.id);
   isDialInspector = isBrowserDialInspector || specializedDial !== undefined;
   configureInspector();
-  if (isBrowserDialInspector) setDialForm(action.settings);
+  if (isNeoInspector) setNeoForm(action.settings);
+  else if (isBrowserDialInspector) setDialForm(action.settings);
   else if (specializedDial === undefined) setKeyForm(action.settings);
   applyHostFont(info);
   socket = new WebSocket(`ws://127.0.0.1:${port}`);
@@ -117,6 +122,12 @@ form.addEventListener("change", (event) => {
     ? event.target.name
     : "";
   if (name === "limitGroupId") selectedGroupId = groupSelect.value;
+  if (isNeoInspector && (name === "limitGroupId" || name === "window")) {
+    neoSettings = normalizeNeoSettings({limitGroupId:selectedGroupId,
+      window:requiredElement<HTMLSelectElement>("quota-window").value});
+    send({event:"setSettings", action:actionId, context:propertyInspectorId, payload:neoSettings});
+    return;
+  }
   if (isBrowserDialInspector && (name === "displayStyle" || name === "limitGroupId")) {
     dialSettings = { ...dialSettings, displayStyle: selectedDisplayStyle(), limitGroupId: selectedGroupId };
     send({
@@ -129,7 +140,7 @@ form.addEventListener("change", (event) => {
   }
   const settings = readForm();
   if (settings === null) return;
-  if (!isDialInspector && keySettingNames.has(name)) {
+  if (!isDialInspector && !isNeoInspector && keySettingNames.has(name)) {
     send({
       event: "setSettings",
       action: actionId,
@@ -152,7 +163,8 @@ function receive(raw: unknown): void {
     if (!isRecord(message)) return;
     const payload = isRecord(message.payload) ? message.payload : {};
     if (message.event === "didReceiveSettings") {
-      if (isBrowserDialInspector) setDialForm(payload.settings);
+      if (isNeoInspector) setNeoForm(payload.settings);
+      else if (isBrowserDialInspector) setDialForm(payload.settings);
       else if (specializedDial === undefined) setKeyForm(payload.settings);
     }
     if (message.event === "didReceiveGlobalSettings") setGlobalForm(payload.settings);
@@ -175,6 +187,13 @@ function receive(raw: unknown): void {
   }
 }
 
+function setNeoForm(raw: unknown): void {
+  neoSettings = normalizeNeoSettings(raw);
+  selectedGroupId = neoSettings.limitGroupId;
+  renderGroupOptions();
+  setField("window", neoSettings.window);
+}
+
 function setDialForm(raw: unknown): void {
   dialSettings = normalizeDialSettings(raw);
   selectedGroupId = dialSettings.limitGroupId;
@@ -187,25 +206,30 @@ function selectedDisplayStyle(): DialSettings["displayStyle"] {
 }
 
 function configureInspector(): void {
-  if (isDialInspector) {
+  if (isDialInspector || isNeoInspector) {
     for (const element of document.querySelectorAll<HTMLElement>("[data-key-only]")) {
       element.hidden = true;
     }
   }
-  if (specializedDial !== undefined) {
-    requiredElement("limit-group-field").hidden = true;
+  const guideContent = isNeoInspector ? {
+    title:"Neo Limits", detail:"Show a limit group's remaining quota, reset countdown, and connection state.",
+    controls:"Neo Infobar is display-only. Choose its group and window here; use Refresh now to retry.",
+  } : specializedDial;
+  requiredElement("quota-window-field").hidden = isDialInspector;
+  if (guideContent !== undefined) {
+    requiredElement("limit-group-field").hidden = !isNeoInspector;
     for (const element of document.querySelectorAll<HTMLElement>("[data-configurable-display]")) {
       element.hidden = true;
     }
     const guide = requiredElement("specialized-guide");
     guide.hidden = false;
-    requiredElement("specialized-guide-title").textContent = specializedDial.title;
-    requiredElement("specialized-guide-detail").textContent = specializedDial.detail;
-    requiredElement("specialized-guide-controls").textContent = specializedDial.controls;
+    requiredElement("specialized-guide-title").textContent = guideContent.title;
+    requiredElement("specialized-guide-detail").textContent = guideContent.detail;
+    requiredElement("specialized-guide-controls").textContent = guideContent.controls;
     const help = requiredElement("specialized-help");
     help.hidden = false;
-    requiredElement("specialized-help-title").textContent = `${specializedDial.title} controls`;
-    requiredElement("specialized-help-copy").textContent = specializedDial.controls;
+    requiredElement("specialized-help-title").textContent = `${guideContent.title} controls`;
+    requiredElement("specialized-help-copy").textContent = guideContent.controls;
   }
 }
 
@@ -213,6 +237,7 @@ function setKeyForm(raw: unknown): void {
   const settings = normalizeSettings(raw);
   selectedGroupId = settings.limitGroupId;
   renderGroupOptions();
+  setField("window", settings.window);
   setField("basis", settings.basis);
   setField("displayStyle", settings.displayStyle);
   setField("resetStyle", settings.resetStyle);
@@ -231,6 +256,7 @@ function readForm(): LimitBeaconSettings | null {
   try {
     const settings = normalizeSettings({
       limitGroupId: selectedGroupId,
+      window: data.get("window") ?? "automatic",
       basis: data.get("basis"),
       displayStyle: data.get("displayStyle"),
       resetStyle: data.get("resetStyle"),
@@ -316,6 +342,7 @@ function readActionInfo(raw: string): { id: string; settings: unknown } {
 function keySettings(settings: LimitBeaconSettings): object {
   return {
     limitGroupId: settings.limitGroupId,
+    window: settings.window,
     basis: settings.basis,
     displayStyle: settings.displayStyle,
     resetStyle: settings.resetStyle,

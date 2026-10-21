@@ -107,7 +107,7 @@ function setup(actionName = "codex-limits", settings: object = {}) {
   };
 }
 
-for (const action of ["limit-browser", "daily-tokens", "credits-spend", "activity-stats"]) {
+for (const action of ["limit-browser", "daily-tokens", "credits-spend", "activity-stats", "neo-limits"]) {
   test(`${action} exposes connection failures and sends Retry to its own action`, () => {
     const host = setup(action);
     host.receive({ status: "error" });
@@ -152,7 +152,7 @@ test("tabs support roving focus, arrows with wrapping, Home and End", () => {
   assert.equal(host.byId("advanced-panel").hidden, false);
 });
 
-for (const action of ["codex-limits", "limit-browser", "daily-tokens", "credits-spend", "activity-stats"]) {
+for (const action of ["codex-limits", "limit-browser", "daily-tokens", "credits-spend", "activity-stats", "neo-limits"]) {
   test(`${action} can test its connection even when Codex is missing`, () => {
     const host = setup(action);
     host.receive({status: "codex-missing", lastSuccessAt: null});
@@ -212,5 +212,40 @@ test("specialized dials do not expose the limit-group selector", () => {
     const host = setup(action);
     assert.ok(host.byId("limit-group-field"));
     assert.equal(host.byId("limit-group-field").hidden, true);
+  }
+});
+
+test("Neo inspector keeps window and group selection together without writing key-only settings", () => {
+  const host = setup("neo-limits", {limitGroupId:"team", window:"secondary"});
+  assert.equal(host.byId("quota-window-field")?.hidden, false);
+  assert.equal(host.nodes.filter(n => n.attributes.has("data-configurable-display")).every(n=>n.hidden), true);
+  assert.match(host.byId("specialized-guide-controls").textContent, /display-only/i);
+  host.change("limitGroupId", "codex");
+  assert.deepEqual(host.sent.at(-1), {event:"setSettings", action:"com.jelicanin.limitbeacon.neo-limits", context:"inspector-1",
+    payload:{limitGroupId:"codex",window:"secondary"}});
+  host.change("window", "primary");
+  assert.deepEqual(host.sent.at(-1)?.payload, {limitGroupId:"codex",window:"primary"});
+  assert.equal(host.byId("limit-group-field").hidden, false);
+});
+
+
+test("key inspector saves its quota window while preserving existing presentation settings", () => {
+  const host = setup("codex-limits", {limitGroupId: "research", window: "secondary", basis: "used",
+    displayStyle: "rings", resetStyle: "local-time", warningThreshold: 40, criticalThreshold: 20});
+  assert.equal(host.byId("quota-window-field").hidden, false);
+  assert.equal(host.byId("quota-window").value, "secondary");
+  host.change("window", "primary");
+  assert.deepEqual(host.sent.at(-1), {event: "setSettings", action: "com.jelicanin.limitbeacon.codex-limits",
+    context: "inspector-1", payload: {limitGroupId: "research", window: "primary", basis: "used",
+      displayStyle: "rings", resetStyle: "local-time", warningThreshold: 40, criticalThreshold: 20}});
+  host.change("limitGroupId", "codex");
+  assert.equal((host.sent.at(-1)?.payload as {window: string}).window, "primary");
+});
+
+test("legacy key settings expose automatic quota selection without changing dial controls", () => {
+  const host = setup();
+  assert.equal(host.byId("quota-window").value, "automatic");
+  for (const action of ["limit-browser", "daily-tokens", "credits-spend", "activity-stats"]) {
+    assert.equal(setup(action).byId("quota-window-field").hidden, true);
   }
 });

@@ -92,6 +92,16 @@ test("credits cards include only account data supplied by Codex", () => {
   }), []);
 });
 
+test("credits status distinguishes included-usage denial from available spend", () => {
+  const snapshot = structuredClone(usageSnapshot);
+  snapshot.accountHealth.ordinaryUsageAllowed = false;
+  const cards = buildCreditsCards(snapshot);
+  assert.deepEqual(cards[0], {
+    kind: "stat", label: "ACCOUNT STATUS", value: "USAGE BLOCKED", detail: "CHECK CODEX", tone: "critical",
+  });
+  assert.ok(cards.some(card => card.label === "CREDIT BALANCE"));
+});
+
 test("activity cards omit unavailable statistics", () => {
   const cards = buildActivityCards({
     ...tokenSnapshot,

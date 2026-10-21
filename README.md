@@ -24,7 +24,7 @@ Press a key for an immediate refresh. Automatic updates, connection management, 
 - Primary and secondary usage windows when Codex makes them available
 - Reset countdown or local date and time
 - Horizontal meters or circular gauges, selected independently per key
-- Five focused actions: one key action and four Stream Deck + dial actions
+- Six focused actions: one key action, four Stream Deck + dial actions, and a Neo Infobar action
 - Daily token usage and activity statistics when supplied by Codex
 - Credits and spend information when available for the signed-in account
 - Smooth directional transitions while browsing dial cards
@@ -34,7 +34,9 @@ Press a key for an immediate refresh. Automatic updates, connection management, 
 
 ## Choose your view
 
-Use the compact horizontal meter or switch any key to a circular gauge. Each key keeps its own display preference, remaining or used basis, and reset-time format.
+Use the compact horizontal meter or switch any key to a circular gauge. Each key shows one usage window with one progress indicator. In **General → Quota window**, choose **First available**, **Primary window**, or **Secondary window**. Add another key to display another window at the same time. Each key keeps its own display preference, remaining or used basis, and reset-time format.
+
+When upgrading to 1.3.0, existing keys use **First available** until you select a window. An explicitly selected missing window shows **Window unavailable** rather than switching to another quota.
 
 ![LimitBeacon offers horizontal meters and circular gauges](docs/assets/limitbeacon-views.png)
 
@@ -55,7 +57,7 @@ Every action's Property Inspector shows its connection status, the last successf
 
 ### Choose a limit group
 
-In **General → Limit group**, choose which group each **Codex Limits** key or **Limit Browser** dial displays. Two actions can show different groups while sharing one connection and refresh cycle. **Automatic** preserves the default Codex view for existing profiles; if it is unavailable, it uses the legacy view or a deterministically selected available group.
+In **General → Limit group**, choose which group each **Codex Limits** key, **Limit Browser** dial, or **Neo Limits** Infobar displays. Two actions can show different groups while sharing one connection and refresh cycle. **Automatic** preserves the default Codex view for existing profiles; if it is unavailable, it uses the legacy view or a deterministically selected available group.
 
 Only groups returned by your account are offered. An explicitly selected group that disappears shows **Group unavailable** and stays selected until it returns or you choose another group. Invalid data retains only that group's last good values with a **STALE** label. Window labels follow the durations reported by Codex.
 
@@ -79,15 +81,23 @@ Daily Tokens and Activity Stats remain account-wide. Credits & Spend continues t
   </tr>
 </table>
 
+## Neo Infobar
+
+**Neo Limits** adds a display-only 232 × 50 Infobar view with the selected group, remaining quota, actual window duration, reset countdown, and stale or unavailable state. In its inspector, choose **First available**, **Primary window**, or **Secondary window**. An explicitly selected missing window stays unavailable; it never silently switches to a different quota.
+
+The Neo Infobar action is display-only. Use **General → Refresh now** or **Advanced → Test connection** to refresh manually. Existing keys and dials retain their display preferences and action identifiers.
+
+Version 1.3.0 uses Elgato SDK 3 and requires Stream Deck 7.6 or later. Neo rendering and lifecycle are verified with local previews and automated host fixtures; physical Neo display acceptance has not yet been performed.
+
 ## Requirements
 
 - macOS 13 or later, or Windows 10 or later
-- Stream Deck 7.1 or later
+- Stream Deck 7.6 or later (version 1.3.0 adds Neo Infobar support)
 - The official Codex CLI, signed in to your account, or the bundled Codex in ChatGPT for macOS
 
 ## Installation
 
-The public package and Marketplace listing are being prepared. To run a development build:
+Version 1.3.0 is in development. To run a development build:
 
 ```bash
 npm ci
@@ -109,6 +119,8 @@ Add **Codex Limits** to a Stream Deck key. Press the key to refresh immediately.
 LimitBeacon reads limits and account usage through the official local Codex App Server methods `account/rateLimits/read` and `account/usage/read`. It does not read or change Codex credential files, browser cookies, refresh tokens, keychain entries, or private endpoints. It contains no telemetry.
 
 Missing limits, account fields, and statistics stay unavailable; LimitBeacon does not estimate or invent them. See [PRIVACY.md](PRIVACY.md) for the complete data-handling description.
+
+When Codex explicitly blocks ordinary usage, quota displays show **Usage blocked** even if a percentage still looks available. A missing permission value does not clear a prior denial for the same account. When Codex reports an account identity change, cached quota and token data from the previous identity are discarded.
 
 ## Troubleshooting
 
