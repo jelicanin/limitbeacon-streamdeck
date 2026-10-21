@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { createServer } from "node:net";
+import { createRequire } from "node:module";
+const { WebSocketServer } = createRequire(import.meta.resolve("@elgato/streamdeck"))("ws");
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -30,46 +31,46 @@ async function rebuild() {
 }
 
 async function assertBundleStarts() {
-  const server = createServer();
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
+  const server = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+  await new Promise((resolve, reject) => { server.once("listening", resolve); server.once("error", reject); });
   const address = server.address();
   assert.ok(address && typeof address !== "string");
-
-  const child = spawn(
-    process.execPath,
-    [
-      bundles[0],
-      "-port",
-      String(address.port),
-      "-pluginUUID",
-      "startup-smoke",
-      "-registerEvent",
-      "registerPlugin",
-      "-info",
-      "{}",
-    ],
-    { cwd: root, stdio: ["ignore", "ignore", "pipe"] },
-  );
+  let registered = false;
+  let settingsRequested = false;
+  let finish;
+  const handshake = new Promise(resolve => { finish = resolve; });
+  server.on("connection", socket => socket.on("message", raw => {
+    const message = JSON.parse(raw.toString());
+    if (message.event === "registerPlugin" && message.uuid === "startup-smoke") registered = true;
+    if (message.event === "getGlobalSettings" && typeof message.id === "string") {
+      settingsRequested = true;
+      socket.send(JSON.stringify({event:"didReceiveGlobalSettings", id:message.id,
+        payload:{settings:{refreshMinutes:5}}}));
+      finish("ready");
+    }
+  }));
+  const child = spawn(process.execPath, [bundles[0], "-port", String(address.port),
+    "-pluginUUID", "startup-smoke", "-registerEvent", "registerPlugin", "-info",
+    JSON.stringify({application:{version:"7.6.0",platform:process.platform === "win32" ? "windows" : "mac",language:"en"},
+      plugin:{uuid:"com.jelicanin.limitbeacon",version:"1.3.0"},devices:[]})],
+    {cwd:fileURLToPath(new URL("../com.jelicanin.limitbeacon.sdPlugin/", import.meta.url)), stdio:["ignore","ignore","pipe"]});
   let stderr = "";
   child.stderr.setEncoding("utf8");
-  child.stderr.on("data", (chunk) => (stderr += chunk));
-  const exit = new Promise((resolve) => child.once("exit", (code) => resolve(code)));
-  const result = await Promise.race([
-    exit,
-    new Promise((resolve) => setTimeout(() => resolve("running"), 300)),
-  ]);
-  if (result === "running") {
-    child.kill();
+  child.stderr.on("data", chunk => { stderr += chunk; });
+  const exit = new Promise(resolve => child.once("exit", code => resolve(`exit:${code}`)));
+  let timer;
+  try {
+    const result = await Promise.race([handshake, exit,
+      new Promise(resolve => {timer=setTimeout(()=>resolve("timeout"),5000);})]);
+    assert.equal(result, "ready", `Plugin did not register and request settings: ${result} ${stderr}`);
+    assert.ok(registered && settingsRequested, "SDK 3 handshake was incomplete");
+  } finally {
+    clearTimeout(timer);
+    if (child.exitCode === null) child.kill();
     await exit;
+    for (const client of server.clients) client.terminate();
+    await new Promise(resolve => server.close(resolve));
   }
-  await new Promise((resolve) => server.close(resolve));
-  assert.ok(
-    result === "running" || result === 0,
-    `Generated plugin crashed during startup:\n${stderr}`,
-  );
 }
 
 await rebuild();

@@ -43,7 +43,7 @@ test("package and manifest identify LimitBeacon consistently", async () => {
   assert.equal(manifest.UUID, "com.jelicanin.limitbeacon");
 
   const actions = manifest.Actions as Array<Record<string, unknown>>;
-  assert.equal(actions.length, 5);
+  assert.equal(actions.length, 6);
   assert.match(String(actions[0]?.UUID), /^com\.jelicanin\.limitbeacon\./);
   assert.equal(actions[0]?.Icon, "imgs/actions/codex-limits-icon");
   assert.equal(actions[1]?.Name, "Limit Browser");
@@ -53,16 +53,18 @@ test("package and manifest identify LimitBeacon consistently", async () => {
     "layouts/limit-browser.json",
   );
   assert.deepEqual(
-    actions.slice(2).map((candidate) => candidate.Name),
+    actions.slice(2, 5).map((candidate) => candidate.Name),
     ["Daily Tokens", "Credits & Spend", "Activity Stats"],
   );
-  for (const specialized of actions.slice(2)) {
+  for (const specialized of actions.slice(2, 5)) {
     assert.deepEqual(specialized.Controllers, ["Encoder"]);
     assert.equal(
       (specialized.Encoder as Record<string, unknown>)?.layout,
       "layouts/limit-browser.json",
     );
   }
+  assert.deepEqual(actions[5]?.Controllers, ["Neo"]);
+  assert.equal(actions[5]?.PropertyInspectorPath, "ui/index.html");
 });
 
 test("unit tests run serially because the Stream Deck SDK rotates a shared log", async () => {
@@ -86,10 +88,10 @@ test("property inspector includes concise self-contained setup help", async () =
   assert.doesNotMatch(html, /com\.jelicanin|limitbeacon-streamdeck/iu);
 });
 
-test("default key image uses stacked meters instead of radar arcs", async () => {
+test("default key image uses a single meter", async () => {
   const svg = await readText("com.jelicanin.limitbeacon.sdPlugin/imgs/actions/codex-limits.svg");
 
-  assert.equal(svg.match(/class="meter-track"/gu)?.length, 2);
+  assert.equal(svg.match(/class="meter-track"/gu)?.length, 1);
   assert.doesNotMatch(svg, /<path\b/iu);
 });
 
@@ -103,7 +105,7 @@ test("property inspector stores key visuals per action and connection settings g
   assert.doesNotMatch(source, /actionContext/u);
 });
 
-test("property inspector offers stacked bars and ring gauges per key", async () => {
+test("property inspector offers bars and ring gauges per key", async () => {
   const html = await readText("com.jelicanin.limitbeacon.sdPlugin/ui/index.html");
   const source = await readText("src/ui/inspector.ts");
 

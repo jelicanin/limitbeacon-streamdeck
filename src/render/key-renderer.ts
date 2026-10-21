@@ -6,8 +6,7 @@ export type UsageKeyViewModel = {
   displayStyle: "bars" | "rings";
   stale: boolean;
   groupLabel?: string;
-  fiveHour: UsageRow;
-  weekly: UsageRow | null;
+  window: UsageRow;
 };
 
 export type MessageKeyViewModel = {
@@ -48,25 +47,21 @@ function renderUsage(model: UsageKeyViewModel): string {
   if (model.displayStyle === "rings") return renderRingUsage(model);
 
   const basis = model.basis === "remaining" ? "LEFT" : "USED";
-  const rows = model.weekly
-    ? `${renderRow(model.fiveHour, basis, -2, 58)}${renderRow(model.weekly, basis, 78, 144)}`
-    : renderSingleRow(model.fiveHour, basis);
+  const row = renderSingleRow(model.window, basis);
 
   return svg(withGroupLabel(`
     ${model.stale ? '<text x="132" y="15" class="stale">STALE</text>' : ""}
-    ${rows}
+    ${row}
   `, model.groupLabel));
 }
 
 function renderRingUsage(model: UsageKeyViewModel): string {
   const basis = model.basis === "remaining" ? "LEFT" : "USED";
-  const rings = model.weekly === null
-    ? renderSingleRing(model.fiveHour, basis)
-    : `${renderRing(model.fiveHour, basis, 38)}${renderRing(model.weekly, basis, 106)}`;
+  const ring = renderSingleRing(model.window, basis);
 
   return svg(withGroupLabel(`
     ${model.stale ? '<text x="132" y="15" class="stale">STALE</text>' : ""}
-    ${rings}
+    ${ring}
   `, model.groupLabel));
 }
 
@@ -75,17 +70,6 @@ function withGroupLabel(content: string, label: string | undefined): string {
   const short = [...label].length > 20 ? [...label].slice(0, 19).join("") + "…" : label;
   return `<text x="72" y="13" fill="#A9C0CF" font-size="10" text-anchor="middle">${escapeXml(short)}</text>
     <g transform="translate(0 20) scale(1 0.85)">${content}</g>`;
-}
-
-function renderRing(row: UsageRow, basis: string, x: number): string {
-  const color = colors[row.severity];
-  return `
-    <text x="${x}" y="15" class="ring-label">${escapeXml(row.label)} · ${basis}</text>
-    <circle cx="${x}" cy="61" r="25" class="ring-track"/>
-    <circle cx="${x}" cy="61" r="25" class="ring-fill" stroke="${color}" stroke-dasharray="${ringDash(row.percent, 25)} 999" transform="rotate(-90 ${x} 61)"/>
-    <text x="${x}" y="68" class="ring-value" fill="${color}">${formatPercent(row.percent)}</text>
-    <text x="${x}" y="135" class="ring-reset">${escapeXml(row.reset ?? "Reset —")}</text>
-  `;
 }
 
 function renderSingleRing(row: UsageRow, basis: string): string {
@@ -99,21 +83,10 @@ function renderSingleRing(row: UsageRow, basis: string): string {
   `;
 }
 
-function renderRow(row: UsageRow, basis: string, y: number, resetY: number): string {
-  const color = colors[row.severity];
-  return `
-    <text x="12" y="${y + 14}" class="label">${row.label} <tspan class="signal" fill="${color}">●</tspan> ${basis}</text>
-    <text x="132" y="${y + 39}" class="value" fill="${color}">${formatPercent(row.percent)}</text>
-    <rect x="12" y="${y + 44}" width="120" height="5" rx="2.5" class="meter-track"/>
-    <rect x="12" y="${y + 44}" width="${meterWidth(row.percent)}" height="5" rx="2.5" class="meter-fill" fill="${color}"/>
-    <text x="12" y="${resetY}" class="reset" dominant-baseline="text-after-edge">${escapeXml(row.reset ?? "Reset unavailable")}</text>
-  `;
-}
-
 function renderSingleRow(row: UsageRow, basis: string): string {
   const color = colors[row.severity];
   return `
-    <text x="72" y="24" class="single-label">${row.label} <tspan class="signal" fill="${color}">●</tspan> ${basis}</text>
+    <text x="72" y="24" class="single-label">${escapeXml(row.label)} <tspan class="signal" fill="${color}">●</tspan> ${basis}</text>
     <text x="72" y="82" class="single-value" fill="${color}">${formatPercent(row.percent)}</text>
     <rect x="12" y="93" width="120" height="6" rx="3" class="meter-track"/>
     <rect x="12" y="93" width="${meterWidth(row.percent)}" height="6" rx="3" class="meter-fill" fill="${color}"/>
@@ -146,10 +119,7 @@ function svg(content: string): string {
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     .stale { fill: #F2B84B; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-anchor: end; }
-    .label { fill: #A9C0CF; font-size: 16px; font-weight: 700; }
-    .value { font-size: 28px; font-weight: 800; text-anchor: end; }
     .signal { font-size: 13px; font-weight: 800; baseline-shift: 1px; }
-    .reset { fill: #A9BBC7; font-size: 18px; font-weight: 600; }
     .meter-track { fill: #233743; }
     .single-label { fill: #A9C0CF; font-size: 18px; font-weight: 700; text-anchor: middle; }
     .single-value { font-size: 42px; font-weight: 800; text-anchor: middle; }
@@ -157,9 +127,6 @@ function svg(content: string): string {
     .ring-track, .ring-fill { fill: none; stroke-width: 7; }
     .ring-track { stroke: #233743; }
     .ring-fill { stroke-linecap: round; }
-    .ring-label { fill: #A9C0CF; font-size: 11px; font-weight: 700; text-anchor: middle; }
-    .ring-value { font-size: 21px; font-weight: 800; text-anchor: middle; }
-    .ring-reset { fill: #A9BBC7; font-size: 12px; font-weight: 600; text-anchor: middle; }
     .single-ring-label { fill: #A9C0CF; font-size: 16px; font-weight: 700; text-anchor: middle; }
     .single-ring-value { font-size: 31px; font-weight: 800; text-anchor: middle; }
     .single-ring-reset { fill: #A9BBC7; font-size: 16px; font-weight: 600; text-anchor: middle; }

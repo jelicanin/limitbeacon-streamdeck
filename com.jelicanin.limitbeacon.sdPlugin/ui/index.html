@@ -34,6 +34,18 @@
             <p id="limit-group-help" class="help">Choose a group for this action. Automatic preserves the default Codex view.</p>
           </fieldset>
 
+          <fieldset id="quota-window-field" hidden>
+            <legend>Quota window</legend>
+            <label class="field"><span>Window to display</span>
+              <select id="quota-window" name="window">
+                <option value="automatic">First available</option>
+                <option value="primary">Primary window</option>
+                <option value="secondary">Secondary window</option>
+              </select>
+            </label>
+            <p class="help">The display shows the actual duration supplied by Codex. A missing selected window stays unavailable.</p>
+          </fieldset>
+
           <div id="specialized-guide" class="specialized-guide" hidden>
             <strong id="specialized-guide-title">Dial</strong>
             <p id="specialized-guide-detail"></p>
@@ -120,7 +132,7 @@
               </li>
               <li>
                 <strong>Return to Stream Deck</strong>
-                <span>LimitBeacon connects automatically. Press the key or dial to retry after setup.</span>
+                <span>LimitBeacon connects automatically. Use Refresh now in General to retry after setup.</span>
               </li>
             </ol>
           </fieldset>

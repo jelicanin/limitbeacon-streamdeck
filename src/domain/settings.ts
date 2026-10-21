@@ -2,6 +2,7 @@ import { normalizeGroupSelection } from "./limit-groups.js";
 
 export type LimitBeaconSettings = {
   limitGroupId: string;
+  window: "automatic" | "primary" | "secondary";
   basis: "remaining" | "used";
   displayStyle: "bars" | "rings";
   refreshMinutes: number;
@@ -13,6 +14,7 @@ export type LimitBeaconSettings = {
 
 const DEFAULT_SETTINGS: LimitBeaconSettings = {
   limitGroupId: "",
+  window: "automatic",
   basis: "remaining",
   displayStyle: "bars",
   refreshMinutes: 5,
@@ -47,6 +49,11 @@ export function normalizeSettings(raw: unknown): LimitBeaconSettings {
   }
 
   const settings = raw as UnknownSettings;
+  const window = valueOrDefault(settings, "window");
+  if (window !== "automatic" && window !== "primary" && window !== "secondary") {
+    throw new TypeError('window must be "automatic", "primary", or "secondary"');
+  }
+
   const basis = valueOrDefault(settings, "basis");
   if (basis !== "remaining" && basis !== "used") {
     throw new TypeError('basis must be "remaining" or "used"');
@@ -93,6 +100,7 @@ export function normalizeSettings(raw: unknown): LimitBeaconSettings {
 
   return {
     limitGroupId: normalizeGroupSelection(settings.limitGroupId),
+    window,
     basis,
     displayStyle,
     refreshMinutes,

@@ -25,6 +25,7 @@ import { locateCodex, type LocatorDependencies } from "./platform/codex-locator.
 import { CodexAppServerProvider } from "./providers/codex-app-server-provider.js";
 import { JsonlRpcClient } from "./providers/jsonl-rpc-client.js";
 import { UsageService } from "./services/usage-service.js";
+import { NeoLimitsAction, NeoLimitsController } from "./actions/neo-limits-action.js";
 
 let settings: ConnectionSettings = normalizeSettings(undefined);
 const locatorDependencies = nodeLocatorDependencies();
@@ -53,6 +54,7 @@ const limitBrowserController = new LimitBrowserController(usageService);
 const dailyTokensController = new SpecializedDialController(usageService, "daily");
 const creditsSpendController = new SpecializedDialController(usageService, "credits");
 const activityStatsController = new SpecializedDialController(usageService, "activity");
+const neoLimitsController = new NeoLimitsController(usageService);
 
 streamDeck.settings.onDidReceiveGlobalSettings((event) => {
   void applySettings(event.settings).catch(() => {
@@ -73,6 +75,9 @@ streamDeck.actions.registerAction(new CreditsSpendAction(
 ));
 streamDeck.actions.registerAction(new ActivityStatsAction(
   activityStatsController, (payload) => streamDeck.ui.sendToPropertyInspector(payload),
+));
+streamDeck.actions.registerAction(new NeoLimitsAction(
+  neoLimitsController, (payload) => streamDeck.ui.sendToPropertyInspector(payload),
 ));
 await streamDeck.connect();
 await applySettings(await streamDeck.settings.getGlobalSettings());
