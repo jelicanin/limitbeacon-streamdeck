@@ -4,11 +4,13 @@ LimitBeacon runs locally as a Stream Deck plugin.
 
 ## Data it reads
 
-LimitBeacon launches the official local `codex app-server` process and requests current limits and usage through `account/rateLimits/read` and `account/usage/read`. It uses returned percentages, reset times, token totals, account usage fields, and activity statistics only to render Stream Deck keys, dials, and Property Inspector status. Fields not returned by Codex remain unavailable.
+LimitBeacon launches the official local `codex app-server` process and requests current limits and usage through `account/rateLimits/read` and `account/usage/read`. It uses returned percentages, reset times, token totals, account usage fields, and activity statistics only to render Stream Deck keys, dials, the Neo Infobar, and Property Inspector status. Fields not returned by Codex remain unavailable.
 
 ## Data it stores
 
 Stream Deck stores the display and connection preferences selected in the Property Inspector. LimitBeacon keeps the most recent successful usage snapshot in memory while the plugin is running so temporary failures can show stale data. It does not write usage snapshots to disk.
+
+When Codex supplies an account identifier, LimitBeacon keeps it in memory to prevent reuse of cached data after a reported account change. The identifier is not displayed, logged, or sent to the Property Inspector. Backend usage permission is retained with the account's in-memory quota state.
 
 ## Data it does not access
 
