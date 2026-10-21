@@ -103,6 +103,18 @@ function latestSvg(dial: FakeDial): string {
   return decodeURIComponent(image.slice("data:image/svg+xml,".length));
 }
 
+test("limit browser respects explicit included-usage denial despite remaining quota", () => {
+  const service = new FakeService();
+  service.state = structuredClone(readyState);
+  service.state.snapshot!.accountHealth.ordinaryUsageAllowed = false;
+  const controller = new LimitBrowserController(service);
+  const dial = new FakeDial("denied");
+  controller.appear(dial, {});
+  assert.match(latestSvg(dial), /Usage blocked/);
+  assert.doesNotMatch(latestSvg(dial), /80%/);
+  controller.disappear(dial.id);
+});
+
 function feedbackSvg(feedback: Record<string, unknown>): string {
   const canvas = feedback.canvas;
   assert.equal(typeof canvas, "string");

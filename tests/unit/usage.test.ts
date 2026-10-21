@@ -57,6 +57,7 @@ test("maps valid five-hour and weekly windows", () => {
     },
     planLabel: "plus",
     accountHealth: {
+      ordinaryUsageAllowed: null,
       credits: null,
       individualLimit: null,
       spendControlReached: null,
@@ -109,6 +110,7 @@ test("maps optional read-only credits and spend data", () => {
   }, capturedAt);
 
   assert.deepEqual(snapshot.accountHealth, {
+    ordinaryUsageAllowed: null,
     credits: { hasCredits: true, unlimited: false, balance: "12.50" },
     individualLimit: {
       limit: "100.00",

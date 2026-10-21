@@ -6,7 +6,8 @@ import type { UsageProvider } from "../providers/codex-app-server-provider.js";
 const DEFAULT_REFRESH_INTERVAL_MS = 5 * 60_000;
 const COUNTDOWN_INTERVAL_MS = 60_000;
 
-export type UsageServiceStatus = "idle" | "loading" | "ready" | "stale" | "error";
+export type UsageServiceStatus =
+  "idle" | "loading" | "ready" | "stale" | "error";
 
 export type UsageServiceState = {
   status: UsageServiceStatus;
@@ -50,10 +51,15 @@ export class UsageService {
   readonly #subscribers = new Set<UsageSubscriber>();
   readonly #tokenSubscribers = new Set<TokenUsageSubscriber>();
   #state: UsageServiceState = { status: "idle", snapshot: null, error: null };
-  #tokenState: TokenUsageServiceState = { status: "idle", snapshot: null, error: null };
+  #tokenState: TokenUsageServiceState = {
+    status: "idle",
+    snapshot: null,
+    error: null,
+  };
   #inFlight: Promise<UsageServiceState> | undefined;
   #refreshQueued = false;
   #tokenInFlight: Promise<TokenUsageServiceState> | undefined;
+  #tokenEpoch = 0;
   #pollTimer: unknown;
   #countdownTimer: unknown;
   #closed = false;
@@ -61,19 +67,24 @@ export class UsageService {
 
   constructor(provider: UsageProvider, options: UsageServiceOptions = {}) {
     this.#provider = provider;
-    this.#unsubscribeProviderUpdates = provider.subscribeUpdates?.(() => {
-      if (this.#closed || this.#subscribers.size === 0) return;
-      if (this.#inFlight !== undefined) {
-        this.#refreshQueued = true;
-        return;
-      }
-      void this.refresh().catch(() => {
-        // The stale or error state has already been published.
-      });
-    }) ?? (() => {});
-    this.#refreshIntervalMs = options.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS;
+    this.#unsubscribeProviderUpdates =
+      provider.subscribeUpdates?.(() => {
+        if (this.#closed || this.#subscribers.size === 0) return;
+        if (this.#inFlight !== undefined) {
+          this.#refreshQueued = true;
+          return;
+        }
+        void this.refresh().catch(() => {
+          // The stale or error state has already been published.
+        });
+      }) ?? (() => {});
+    this.#refreshIntervalMs =
+      options.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS;
     this.#timers = options.timers ?? defaultTimers;
-    if (!Number.isSafeInteger(this.#refreshIntervalMs) || this.#refreshIntervalMs <= 0) {
+    if (
+      !Number.isSafeInteger(this.#refreshIntervalMs) ||
+      this.#refreshIntervalMs <= 0
+    ) {
       throw new RangeError("refreshIntervalMs must be a positive integer");
     }
   }
@@ -172,29 +183,69 @@ export class UsageService {
       .then(() => this.#provider.read())
       .then((incoming) => {
         const previous = this.#state.collection;
-        const collection = { ...incoming, groups: incoming.groups.map(group => {
-          const old = previous?.groups.find(candidate => candidate.id === group.id)?.snapshot;
-          return group.snapshot === null && old != null
-            ? { ...group, snapshot: { ...old, stale: true } }
-            : group;
-        }) };
-        this.#state = selectUsageGroup({ status: "ready", snapshot: null, error: null, collection }, "");
+        const accountId = incoming.accountId ?? null;
+        const previousAccountId = previous?.accountId ?? null;
+        const accountChanged = accountId !== previousAccountId;
+        const permission = incoming.ordinaryUsageAllowed ?? null;
+        const ordinaryUsageAllowed =
+          permission === null &&
+          accountId === previousAccountId &&
+          previous?.ordinaryUsageAllowed === false
+            ? false
+            : permission;
+        const collection = {
+          ...incoming,
+          accountId,
+          ordinaryUsageAllowed,
+          groups: incoming.groups.map((group) => {
+            const old = accountChanged
+              ? null
+              : previous?.groups.find((candidate) => candidate.id === group.id)
+                  ?.snapshot;
+            const snapshot =
+              group.snapshot ?? (old == null ? null : { ...old, stale: true });
+            return snapshot === null
+              ? group
+              : {
+                  ...group,
+                  snapshot: {
+                    ...snapshot,
+                    accountHealth: {
+                      ...snapshot.accountHealth,
+                      ordinaryUsageAllowed,
+                    },
+                  },
+                };
+          }),
+        };
+        this.#state = selectUsageGroup(
+          { status: "ready", snapshot: null, error: null, collection },
+          "",
+        );
+        if (accountChanged) this.#invalidateTokenUsage();
         this.#notify();
         return this.#state;
       })
       .catch((error: unknown) => {
-        const normalized = error instanceof Error ? error : new Error("Usage refresh failed");
+        const normalized =
+          error instanceof Error ? error : new Error("Usage refresh failed");
         const previous = this.#state.snapshot;
-        const collection = this.#state.collection === undefined ? undefined : {
-          ...this.#state.collection,
-          groups: this.#state.collection.groups.map(group => ({
-            ...group, snapshot: group.snapshot === null ? null : { ...group.snapshot, stale: true },
-          })),
-        };
+        const collection =
+          this.#state.collection === undefined
+            ? undefined
+            : {
+                ...this.#state.collection,
+                groups: this.#state.collection.groups.map((group) => ({
+                  ...group,
+                  snapshot:
+                    group.snapshot === null
+                      ? null
+                      : { ...group.snapshot, stale: true },
+                })),
+              };
         this.#state = {
           ...(collection === undefined ? {} : { collection }),
-          ...(
-          previous === null
+          ...(previous === null
             ? { status: "error", snapshot: null, error: normalized }
             : {
                 status: "stale",
@@ -215,16 +266,20 @@ export class UsageService {
   }
 
   refreshTokenUsage(): Promise<TokenUsageServiceState> {
-    if (this.#closed) return Promise.reject(new Error("UsageService is closed"));
+    if (this.#closed)
+      return Promise.reject(new Error("UsageService is closed"));
     if (this.#tokenInFlight !== undefined) return this.#tokenInFlight;
     if (this.#tokenState.snapshot === null) {
       this.#tokenState = { status: "loading", snapshot: null, error: null };
       this.#notifyTokens();
     }
 
+    const epoch = this.#tokenEpoch;
     const operation = Promise.resolve()
       .then(() => this.#provider.readTokenUsage())
       .then((snapshot) => {
+        if (epoch !== this.#tokenEpoch)
+          throw new Error("Account changed during token usage refresh");
         this.#tokenState = {
           status: "ready",
           snapshot: { ...snapshot, stale: false },
@@ -234,15 +289,20 @@ export class UsageService {
         return this.#tokenState;
       })
       .catch((error: unknown) => {
-        const normalized = error instanceof Error ? error : new Error("Token usage refresh failed");
+        const normalized =
+          error instanceof Error
+            ? error
+            : new Error("Token usage refresh failed");
+        if (epoch !== this.#tokenEpoch) throw normalized;
         const previous = this.#tokenState.snapshot;
-        this.#tokenState = previous === null
-          ? { status: "error", snapshot: null, error: normalized }
-          : {
-              status: "stale",
-              snapshot: { ...previous, stale: true },
-              error: normalized,
-            };
+        this.#tokenState =
+          previous === null
+            ? { status: "error", snapshot: null, error: normalized }
+            : {
+                status: "stale",
+                snapshot: { ...previous, stale: true },
+                error: normalized,
+              };
         this.#notifyTokens();
         throw normalized;
       });
@@ -273,13 +333,26 @@ export class UsageService {
       this.#inFlight = undefined;
       if (this.#refreshQueued) {
         this.#refreshQueued = false;
-        if (!this.#closed && this.#subscribers.size > 0) void this.refresh().catch(() => {});
+        if (!this.#closed && this.#subscribers.size > 0)
+          void this.refresh().catch(() => {});
       }
     }
   }
 
   #finishTokenRefresh(operation: Promise<TokenUsageServiceState>): void {
     if (this.#tokenInFlight === operation) this.#tokenInFlight = undefined;
+  }
+
+  #invalidateTokenUsage(): void {
+    this.#tokenEpoch += 1;
+    this.#tokenInFlight = undefined;
+    this.#tokenState = { status: "idle", snapshot: null, error: null };
+    this.#notifyTokens();
+    if (!this.#closed && this.#tokenSubscribers.size > 0) {
+      void this.refreshTokenUsage().catch(() => {
+        // Only the current account's request may publish token state.
+      });
+    }
   }
 
   #startTimers(): void {
@@ -295,7 +368,10 @@ export class UsageService {
         });
       }
     }, this.#refreshIntervalMs);
-    this.#countdownTimer = this.#timers.setInterval(() => this.rerender(), COUNTDOWN_INTERVAL_MS);
+    this.#countdownTimer = this.#timers.setInterval(
+      () => this.rerender(),
+      COUNTDOWN_INTERVAL_MS,
+    );
   }
 
   #stopTimers(): void {
@@ -316,7 +392,8 @@ export class UsageService {
   }
 
   #notifyTokens(): void {
-    for (const subscriber of this.#tokenSubscribers) subscriber(this.#tokenState);
+    for (const subscriber of this.#tokenSubscribers)
+      subscriber(this.#tokenState);
   }
 
   #subscriberCount(): number {
@@ -325,15 +402,30 @@ export class UsageService {
 }
 
 /** Select from one shared read; never substitute another group for an explicit selection. */
-export function selectUsageGroup(state: UsageServiceState, groupId: string): UsageServiceState {
+export function selectUsageGroup(
+  state: UsageServiceState,
+  groupId: string,
+): UsageServiceState {
   if (state.collection === undefined) return state;
-  const group = state.collection.groups.find(item => item.id === (groupId || state.collection!.defaultGroupId));
+  const group = state.collection.groups.find(
+    (item) => item.id === (groupId || state.collection!.defaultGroupId),
+  );
   if (group?.snapshot == null) {
     const { groupLabel: _label, ...rest } = state;
-    return { ...rest, status: "error", snapshot: null, ...(group ? {groupLabel: group.label} : {}),
-      groupUnavailable: true };
+    return {
+      ...rest,
+      status: "error",
+      snapshot: null,
+      ...(group ? { groupLabel: group.label } : {}),
+      groupUnavailable: true,
+    };
   }
   const stale = group.snapshot.stale;
-  return { ...state, snapshot: group.snapshot, status: stale ? "stale" : "ready",
-    groupLabel: group.label, groupUnavailable: false };
+  return {
+    ...state,
+    snapshot: group.snapshot,
+    status: stale ? "stale" : "ready",
+    groupLabel: group.label,
+    groupUnavailable: false,
+  };
 }

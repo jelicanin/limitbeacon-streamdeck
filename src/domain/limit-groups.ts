@@ -1,4 +1,4 @@
-import { mapRateLimits, UsageValidationError, type UsageSnapshot } from "./usage.js";
+import { mapRateLimits, readOrdinaryUsageAllowed, UsageValidationError, type UsageSnapshot } from "./usage.js";
 
 export type LimitGroup = {
   id: string;
@@ -7,6 +7,9 @@ export type LimitGroup = {
 };
 
 export type UsageCollection = {
+  /** Opaque cache identity, never a display label or diagnostic value. */
+  accountId?: string | null;
+  ordinaryUsageAllowed?: boolean | null;
   capturedAt: number;
   defaultGroupId: string | null;
   groups: LimitGroup[];
@@ -16,6 +19,9 @@ export function mapLimitGroups(response: unknown, capturedAt = Date.now()): Usag
   if (!isRecord(response) || (!isRecord(response.rateLimits) && !isRecord(response.rateLimitsByLimitId))) {
     throw new UsageValidationError("MISSING_PRIMARY_USAGE", "Codex response does not contain rate limits");
   }
+  const accountId = typeof response.accountId === "string" && response.accountId.length > 0
+    ? response.accountId : null;
+  const ordinaryUsageAllowed = readOrdinaryUsageAllowed(response);
   const entries = new Map<string, unknown>();
   if (isRecord(response.rateLimitsByLimitId)) {
     for (const [id, value] of Object.entries(response.rateLimitsByLimitId)) {
@@ -33,12 +39,12 @@ export function mapLimitGroups(response: unknown, capturedAt = Date.now()): Usag
       : id === "codex" ? "Codex" : `Limit group ${index + 1}`;
     let snapshot: UsageSnapshot | null = null;
     try {
-      snapshot = mapRateLimits({ rateLimits: value, rateLimitResetCredits: response.rateLimitResetCredits }, capturedAt);
+      snapshot = mapRateLimits({ rateLimits: value, rateLimitResetCredits: response.rateLimitResetCredits, ordinaryUsageAllowed }, capturedAt);
     } catch (error) {
       if (!(error instanceof UsageValidationError)) throw error;
       if (id === legacyId && legacy !== value) {
         try {
-          snapshot = mapRateLimits({ rateLimits: legacy, rateLimitResetCredits: response.rateLimitResetCredits }, capturedAt);
+          snapshot = mapRateLimits({ rateLimits: legacy, rateLimitResetCredits: response.rateLimitResetCredits, ordinaryUsageAllowed }, capturedAt);
         } catch (legacyError) {
           if (!(legacyError instanceof UsageValidationError)) throw legacyError;
         }
@@ -51,7 +57,7 @@ export function mapLimitGroups(response: unknown, capturedAt = Date.now()): Usag
     throw new UsageValidationError("INVALID_RATE_LIMIT_WINDOW", "Codex returned invalid rate limits");
   }
   const preferred = valid("codex") ?? valid(legacyId) ?? groups.find(group => group.snapshot !== null);
-  return { capturedAt, groups, defaultGroupId: preferred?.id ?? groups[0]?.id ?? null };
+  return { accountId, ordinaryUsageAllowed, capturedAt, groups, defaultGroupId: preferred?.id ?? groups[0]?.id ?? null };
 }
 
 export function validGroupId(value: unknown): value is string {

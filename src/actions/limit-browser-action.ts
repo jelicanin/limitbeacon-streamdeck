@@ -295,6 +295,9 @@ function toViewModel(state: UsageServiceState, settings: DialSettings): DialView
   state = selectUsageGroup(state, settings.limitGroupId);
   if (state.groupUnavailable) return { type: "message", tone: "error", title: "Group unavailable" };
   if (state.snapshot !== null) {
+    if (state.snapshot.accountHealth.ordinaryUsageAllowed === false) {
+      return { type: "message", tone: "error", title: "Usage blocked" };
+    }
     const windows = [
       ...(state.snapshot.fiveHour === null ? [] : [windowViewModel("PRIMARY", state.snapshot.fiveHour, settings.basis)]),
       ...(state.snapshot.weekly === null
