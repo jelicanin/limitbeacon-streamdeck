@@ -13,6 +13,7 @@ import {
   JsonlRpcProcessError,
   JsonlRpcClient,
   JsonlRpcRemoteError,
+  JsonlRpcTimeoutError,
 } from "../../src/providers/jsonl-rpc-client.js";
 
 const fixtures = new URL("../fixtures/rate-limits/", import.meta.url);
@@ -134,6 +135,19 @@ test("emits updates only for rate-limit notifications", async (t) => {
   assert.equal(updates, 1);
 });
 
+test("forwards account notifications separately from rate-limit changes", async (t) => {
+  const rpc = new FakeRpcClient([await fixture("direct.json")]);
+  let notify!: (method: string, params: unknown) => void;
+  const provider = new CodexAppServerProvider({ createClient: async (callback) => { notify = callback; return rpc; } });
+  t.after(() => provider.close());
+  let accounts = 0;
+  provider.subscribeAccountUpdates(() => { accounts += 1; });
+  await provider.read();
+  notify("account/rateLimits/updated", {});
+  notify("account/updated", {});
+  assert.equal(accounts, 1);
+});
+
 test("preserves an unavailable secondary window", async (t) => {
   const rpc = new FakeRpcClient([await fixture("primary-only.json")]);
   const provider = new CodexAppServerProvider({ createClient: async () => rpc });
@@ -212,6 +226,20 @@ test("restarts the process once after a crash", async (t) => {
   assert.equal(crashed.closeCount, 1);
 });
 
+test("a timed out client is closed and the next refresh reconnects", async (t) => {
+  const stalled = new FakeRpcClient([new JsonlRpcTimeoutError("account/rateLimits/read", 10)]);
+  const recovered = new FakeRpcClient([await fixture("direct.json")]);
+  const clients = [stalled, recovered];
+  let starts = 0;
+  const provider = new CodexAppServerProvider({ createClient: async () => clients[starts++]! });
+  t.after(() => provider.close());
+
+  await assert.rejects(provider.read(), JsonlRpcTimeoutError);
+  assert.equal(stalled.closeCount, 1);
+  assert.equal(defaultSnapshot(await provider.read()).fiveHour?.usedPercent, 24);
+  assert.equal(starts, 2);
+});
+
 test("a later read can try again after a failed restart", async (t) => {
   const processError = new JsonlRpcProcessError("process exited", 17, "PROCESS_EXITED");
   const clients = [
@@ -260,6 +288,51 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   });
   return { promise, resolve };
 }
+
+test("timeout disposal lets a concurrent token read reconnect", async (t) => {
+  let rejectTokens!: (error: Error) => void;
+  const tokenPending = new Promise<never>((_resolve, reject) => { rejectTokens = reject; });
+  let closeCount = 0;
+  const stalled: RpcClientLike = {
+    request: async <T>(method: string): Promise<T> => {
+      if (method === "account/usage/read") return tokenPending;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      throw new JsonlRpcTimeoutError(method, 10);
+    },
+    close: async () => {
+      closeCount += 1;
+      rejectTokens(new JsonlRpcProcessError("closed", null, "PROCESS_EXITED"));
+    },
+  };
+  const recovered = new FakeRpcClient([await fixture("../token-usage/full.json")]);
+  let starts = 0;
+  const provider = new CodexAppServerProvider({ createClient: async () => ++starts === 1 ? stalled : recovered });
+  t.after(() => provider.close());
+  const limits = assert.rejects(provider.read(), JsonlRpcTimeoutError);
+  const tokens = provider.readTokenUsage();
+  await limits;
+  assert.equal((await tokens).summary.lifetimeTokens, 123_456_789);
+  assert.equal(closeCount, 1);
+  assert.equal(starts, 2);
+});
+
+test("provider close waits for a timed out client to finish closing", async () => {
+  const release = deferred<void>();
+  const closingStarted = deferred<void>();
+  const client: RpcClientLike = {
+    request: async () => { throw new JsonlRpcTimeoutError("account/rateLimits/read", 10); },
+    close: async () => { closingStarted.resolve(); await release.promise; },
+  };
+  const provider = new CodexAppServerProvider({ createClient: async () => client });
+  const read = assert.rejects(provider.read(), CodexProviderError);
+  await closingStarted.promise;
+  let finished = false;
+  const close = provider.close().then(() => { finished = true; });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(finished, false);
+  release.resolve();
+  await Promise.all([read, close]);
+});
 
 test("simultaneous limit and token reads share initialization and release their only client", async () => {
   const ready = deferred<RpcClientLike>();

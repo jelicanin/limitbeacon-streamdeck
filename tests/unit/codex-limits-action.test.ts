@@ -105,6 +105,25 @@ test("key press refreshes once and shows success feedback", async () => {
   assert.equal(key.alertCount, 0);
 });
 
+test("a disconnected key does not reject when refresh and alert both fail", async () => {
+  const service = new FakeService();
+  service.refresh = async () => { throw new Error("offline"); };
+  const key = new FakeKey("disconnected");
+  key.showAlert = async () => { throw new Error("disconnected"); };
+  const controller = new CodexLimitsController(service);
+  controller.appear(key, {});
+  await assert.doesNotReject(controller.keyDown(key.id));
+});
+
+test("a disconnected key handles image and fallback alert failures", async () => {
+  const key = new FakeKey("disconnected-image");
+  key.setImage = async () => { throw new Error("disconnected"); };
+  key.showAlert = async () => { throw new Error("disconnected"); };
+  const controller = new CodexLimitsController(new FakeService());
+  controller.appear(key, {});
+  await new Promise<void>((resolve) => setImmediate(resolve));
+});
+
 test("key settings changes rerender cache without refreshing", () => {
   const service = new FakeService();
   const controller = new CodexLimitsController(service);

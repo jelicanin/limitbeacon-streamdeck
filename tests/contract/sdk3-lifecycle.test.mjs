@@ -111,6 +111,7 @@ test(
           export class JsonlRpcProcessError extends Error {}
           export class JsonlRpcProtocolError extends Error {}
           export class JsonlRpcRemoteError extends Error {}
+          export class JsonlRpcTimeoutError extends Error {}
           export class JsonlRpcClient {
             static async start({executable}) {
               return {close:async()=>{},request:async(method)=>{

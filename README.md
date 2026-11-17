@@ -97,7 +97,9 @@ Version 1.3.0 uses Elgato SDK 3 and requires Stream Deck 7.6 or later. Neo rende
 
 ## Installation
 
-Version 1.3.0 is in development. To run a development build:
+Install LimitBeacon from the [Elgato Marketplace](https://marketplace.elgato.com/product/limitbeacon-7e0006fc-2499-4957-a7df-9c594c4712cf), or download a `.streamDeckPlugin` installer from [GitHub Releases](https://github.com/jelicanin/limitbeacon-streamdeck/releases). Verify the installer against the accompanying SHA-256 checksum file when provided. Check the selected release's requirements before installing; the versions available through the two channels may differ.
+
+To run a development build from source:
 
 ```bash
 npm ci
@@ -164,6 +166,8 @@ npm run check
 The project uses TypeScript, the official Stream Deck SDK, and the public Codex App Server protocol. One persistent provider process and one shared scheduler serve every key, with caching and single-flight refresh to avoid duplicate work.
 
 Use Node.js 24 to match the Stream Deck runtime. CI runs full checks including plugin startup on macOS and Windows; `npm run check:portable` runs type checking, tests, deterministic builds, and package validation on Linux without launching the unsupported plugin runtime.
+
+Maintainers and coding agents must follow [RELEASING.md](RELEASING.md) for version selection, verification, approval, GitHub publication, and Marketplace handoff. Repository-specific agent instructions are in [AGENTS.md](AGENTS.md).
 
 ## License
 

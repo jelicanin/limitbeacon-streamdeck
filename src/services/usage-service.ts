@@ -46,6 +46,7 @@ const defaultTimers: UsageServiceTimerDependencies = {
 export class UsageService {
   readonly #provider: UsageProvider;
   readonly #unsubscribeProviderUpdates: () => void;
+  readonly #unsubscribeAccountUpdates: () => void;
   #refreshIntervalMs: number;
   readonly #timers: UsageServiceTimerDependencies;
   readonly #subscribers = new Set<UsageSubscriber>();
@@ -58,6 +59,7 @@ export class UsageService {
   };
   #inFlight: Promise<UsageServiceState> | undefined;
   #refreshQueued = false;
+  #usageEpoch = 0;
   #tokenInFlight: Promise<TokenUsageServiceState> | undefined;
   #tokenEpoch = 0;
   #pollTimer: unknown;
@@ -78,6 +80,16 @@ export class UsageService {
           // The stale or error state has already been published.
         });
       }) ?? (() => {});
+    this.#unsubscribeAccountUpdates = provider.subscribeAccountUpdates?.(() => {
+      if (this.#closed) return;
+      this.#usageEpoch += 1;
+      this.#inFlight = undefined;
+      this.#refreshQueued = false;
+      this.#state = { status: "idle", snapshot: null, error: null };
+      this.#notify();
+      this.#invalidateTokenUsage();
+      if (this.#subscribers.size > 0) void this.refresh().catch(() => {});
+    }) ?? (() => {});
     this.#refreshIntervalMs =
       options.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS;
     this.#timers = options.timers ?? defaultTimers;
@@ -179,9 +191,11 @@ export class UsageService {
       this.#notify();
     }
 
+    const epoch = this.#usageEpoch;
     const operation = Promise.resolve()
       .then(() => this.#provider.read())
       .then((incoming) => {
+        if (epoch !== this.#usageEpoch) throw new Error("Account changed during usage refresh");
         const previous = this.#state.collection;
         const accountId = incoming.accountId ?? null;
         const previousAccountId = previous?.accountId ?? null;
@@ -189,6 +203,7 @@ export class UsageService {
         const permission = incoming.ordinaryUsageAllowed ?? null;
         const ordinaryUsageAllowed =
           permission === null &&
+          accountId !== null &&
           accountId === previousAccountId &&
           previous?.ordinaryUsageAllowed === false
             ? false
@@ -198,7 +213,7 @@ export class UsageService {
           accountId,
           ordinaryUsageAllowed,
           groups: incoming.groups.map((group) => {
-            const old = accountChanged
+            const old = accountChanged || accountId === null
               ? null
               : previous?.groups.find((candidate) => candidate.id === group.id)
                   ?.snapshot;
@@ -229,6 +244,7 @@ export class UsageService {
       .catch((error: unknown) => {
         const normalized =
           error instanceof Error ? error : new Error("Usage refresh failed");
+        if (epoch !== this.#usageEpoch) throw normalized;
         const previous = this.#state.snapshot;
         const collection =
           this.#state.collection === undefined
@@ -321,6 +337,7 @@ export class UsageService {
     }
     this.#closed = true;
     this.#unsubscribeProviderUpdates();
+    this.#unsubscribeAccountUpdates();
     this.#stopTimers();
     this.#subscribers.clear();
     this.#tokenSubscribers.clear();

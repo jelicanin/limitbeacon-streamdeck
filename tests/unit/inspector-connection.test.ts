@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { InspectorConnection, isInspectorRefreshCommand } from "../../src/ui/inspector-connection.js";
+import { InspectorConnection, inspectorConnectionPayload, isInspectorRefreshCommand } from "../../src/ui/inspector-connection.js";
 import { UsageService } from "../../src/services/usage-service.js";
 import { CodexProviderError } from "../../src/providers/codex-app-server-provider.js";
 import { CodexLocatorError } from "../../src/platform/codex-locator.js";
+import { JsonlRpcTimeoutError } from "../../src/providers/jsonl-rpc-client.js";
 import type { InspectorStatusId } from "../../src/ui/inspector-model.js";
 
 function tokenService() {
@@ -103,6 +104,30 @@ test("connection diagnostics retain the last success after a failure and expose 
   assert.deepEqual(sent.at(-1), {status: "connected", lastSuccessAt: 1});
   fail(new Error("private upstream details"));
   await assert.rejects(service.refreshTokenUsage());
-  assert.deepEqual(sent.at(-1), {status: "stale", lastSuccessAt: 1});
+  assert.deepEqual(sent.at(-1), {status: "stale", lastSuccessAt: 1, staleReason: "refresh-failed"});
   assert.equal(JSON.stringify(sent).includes("private upstream"), false);
+});
+
+for (const [error, reason] of [
+  [new CodexLocatorError("private path"), "codex-missing"],
+  [new CodexProviderError("SIGN_IN_REQUIRED", "private account"), "sign-in-required"],
+  [new CodexProviderError("CODEX_INCOMPATIBLE", "private response"), "incompatible"],
+  [new JsonlRpcTimeoutError("account/usage/read", 100), "timeout"],
+] as const) {
+  test(`stale inspector categorizes ${reason} without exposing error details`, async (t) => {
+    const {service, fail} = tokenService();
+    t.after(() => service.close());
+    const connection = new InspectorConnection(subscriber => service.subscribeTokenUsage(subscriber));
+    const sent: unknown[] = [];
+    connection.appear("daily", async payload => { sent.push(payload); });
+    await service.refreshTokenUsage();
+    fail(error);
+    await assert.rejects(service.refreshTokenUsage());
+    assert.deepEqual(sent.at(-1), {status: "stale", lastSuccessAt: 1, staleReason: reason});
+  });
+}
+
+test("stale selected group with no read error identifies unusable group data", () => {
+  assert.deepEqual(inspectorConnectionPayload({ status: "stale", error: null, snapshot: { capturedAt: 1 } }),
+    { status: "stale", lastSuccessAt: 1, staleReason: "invalid-data" });
 });

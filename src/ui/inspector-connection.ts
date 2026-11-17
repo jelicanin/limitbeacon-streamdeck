@@ -1,7 +1,8 @@
 import { CodexLocatorError } from "../platform/codex-locator.js";
 import { CodexProviderError } from "../providers/codex-app-server-provider.js";
+import { JsonlRpcTimeoutError } from "../providers/jsonl-rpc-client.js";
 import type { UsageServiceState } from "../services/usage-service.js";
-import type { InspectorStatusId } from "./inspector-model.js";
+import type { InspectorStatusId, StaleReason } from "./inspector-model.js";
 
 type InspectorState = Pick<UsageServiceState, "status" | "error"> & {
   snapshot?: { capturedAt: number } | null;
@@ -11,6 +12,7 @@ type InspectorState = Pick<UsageServiceState, "status" | "error"> & {
 export type InspectorPayload = {
   status: InspectorStatusId;
   lastSuccessAt: number | null;
+  staleReason?: StaleReason;
   limitGroups?: { id: string; label: string; available: boolean }[];
 };
 export type InspectorSender = (payload: InspectorPayload) => Promise<void>;
@@ -50,10 +52,22 @@ export function isInspectorRefreshCommand(value: unknown): boolean {
 
 export function inspectorConnectionPayload(state: InspectorState): InspectorPayload {
   return { status: inspectorStatus(state), lastSuccessAt: state.snapshot?.capturedAt ?? null,
+    ...(state.status === "stale" ? { staleReason: staleReason(state.error) } : {}),
     ...(state.collection === undefined ? {} : { limitGroups: state.collection.groups.map(group => ({
       id: group.id, label: group.label, available: group.snapshot !== null,
     })) }),
   };
+}
+
+function staleReason(error: Error | null): StaleReason {
+  if (error === null) return "invalid-data";
+  if (error instanceof CodexLocatorError) return "codex-missing";
+  if (error instanceof JsonlRpcTimeoutError) return "timeout";
+  if (error instanceof CodexProviderError) {
+    if (error.code === "SIGN_IN_REQUIRED") return "sign-in-required";
+    if (error.code === "CODEX_INCOMPATIBLE") return "incompatible";
+  }
+  return "refresh-failed";
 }
 
 function inspectorStatus(state: InspectorState): InspectorStatusId {

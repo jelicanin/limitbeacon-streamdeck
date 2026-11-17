@@ -103,6 +103,20 @@ function latestSvg(dial: FakeDial): string {
   return decodeURIComponent(image.slice("data:image/svg+xml,".length));
 }
 
+test("failed manual refresh alerts after the service publishes its error state", async () => {
+  const service = new FakeService();
+  service.refresh = async () => {
+    service.state = { status: "error", snapshot: null, error: new Error("offline") };
+    for (const subscriber of service.subscribers) subscriber(service.state);
+    throw new Error("offline");
+  };
+  const controller = new LimitBrowserController(service);
+  const dial = new FakeDial("refresh-error");
+  controller.appear(dial, {});
+  await controller.press(dial.id);
+  assert.equal(dial.alertCount, 1);
+});
+
 test("limit browser respects explicit included-usage denial despite remaining quota", () => {
   const service = new FakeService();
   service.state = structuredClone(readyState);
