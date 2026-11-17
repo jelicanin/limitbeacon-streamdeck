@@ -17,13 +17,18 @@
     "check": "npm run typecheck && npm test && node scripts/check-generated.mjs && streamdeck validate com.jelicanin.limitbeacon.sdPlugin"
   },
   "dependencies": {
-    "@elgato/streamdeck": "^3.0.3"
+    "@elgato/streamdeck": "^3.0.4"
   },
   "devDependencies": {
-    "@elgato/cli": "^1.10.3",
+    "@elgato/cli": "^1.10.4",
     "@types/node": "^24.19.2",
     "esbuild": "^0.28.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
+  },
+  "overrides": {
+    "@elgato/utils": {
+      "zod": "4.6.6"
+    }
   }
 }
