@@ -3,6 +3,7 @@ import { normalizeDialSettings, type DialSettings } from "../domain/dial-setting
 import { normalizeNeoSettings } from "../domain/neo-settings.js";
 import {
   inspectorStatusModel,
+  staleDetail,
   type InspectorStatusId,
 } from "./inspector-model.js";
 
@@ -176,7 +177,7 @@ function receive(raw: unknown): void {
         groupsReceived = true;
         renderGroupOptions();
       }
-      renderStatus(payload.status);
+      renderStatus(payload.status, payload.staleReason);
       const timestamp = payload.lastSuccessAt;
       const valid = typeof timestamp === "number" && timestamp >= 0 && Number.isFinite(new Date(timestamp).getTime());
       lastSuccess.hidden = !valid;
@@ -273,11 +274,11 @@ function readForm(): LimitBeaconSettings | null {
   }
 }
 
-function renderStatus(id: InspectorStatusId): void {
+function renderStatus(id: InspectorStatusId, reason?: unknown): void {
   const model = inspectorStatusModel(id);
   status?.setAttribute("data-tone", id === "connected" ? "connected" : id === "starting" ? "starting" : "error");
   statusTitle.textContent = model.title;
-  statusDetail.textContent = model.detail;
+  statusDetail.textContent = id === "stale" ? staleDetail(reason) ?? model.detail : model.detail;
   statusAction.replaceChildren();
   connectionTest.disabled = id === "starting";
 

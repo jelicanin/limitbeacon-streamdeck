@@ -9,6 +9,7 @@ import {
   JsonlRpcProcessError,
   JsonlRpcProtocolError,
   JsonlRpcRemoteError,
+  JsonlRpcTimeoutError,
 } from "./jsonl-rpc-client.js";
 
 const RATE_LIMITS_METHOD = "account/rateLimits/read";
@@ -19,6 +20,7 @@ export interface UsageProvider {
   readTokenUsage(): Promise<TokenUsageSnapshot>;
   close(): Promise<void>;
   subscribeUpdates?(subscriber: () => void): () => void;
+  subscribeAccountUpdates?(subscriber: () => void): () => void;
 }
 
 export interface RpcClientLike {
@@ -43,6 +45,7 @@ export class CodexAppServerProvider implements UsageProvider {
     onNotification: (method: string, params: unknown) => void,
   ) => Promise<RpcClientLike>;
   readonly #updateSubscribers = new Set<() => void>();
+  readonly #accountSubscribers = new Set<() => void>();
   readonly #releases = new Set<Promise<void>>();
   #client: RpcClientLike | undefined;
   #initializing: Promise<RpcClientLike> | undefined;
@@ -61,6 +64,11 @@ export class CodexAppServerProvider implements UsageProvider {
   subscribeUpdates(subscriber: () => void): () => void {
     this.#updateSubscribers.add(subscriber);
     return () => this.#updateSubscribers.delete(subscriber);
+  }
+
+  subscribeAccountUpdates(subscriber: () => void): () => void {
+    this.#accountSubscribers.add(subscriber);
+    return () => this.#accountSubscribers.delete(subscriber);
   }
 
   async read(): Promise<UsageCollection> {
@@ -95,6 +103,11 @@ export class CodexAppServerProvider implements UsageProvider {
         return await client.request<unknown>(method, undefined);
       } catch (error) {
         this.#assertCurrent(generation);
+        if (error instanceof JsonlRpcTimeoutError) {
+          await this.#discardClient(client);
+          this.#assertCurrent(generation);
+          throw error;
+        }
         if (error instanceof JsonlRpcProtocolError) {
           await this.#discardClient(client);
           throw new CodexProviderError(
@@ -124,6 +137,7 @@ export class CodexAppServerProvider implements UsageProvider {
     this.#closed = true;
     this.#generation += 1;
     this.#updateSubscribers.clear();
+    this.#accountSubscribers.clear();
     const release = this.#releaseClient();
     this.#closePromise = Promise.all([...this.#releases, release]).then(() => undefined);
     return this.#closePromise;
@@ -197,6 +211,10 @@ export class CodexAppServerProvider implements UsageProvider {
   }
 
   #receiveNotification(method: string): void {
+    if (method === "account/updated") {
+      for (const subscriber of this.#accountSubscribers) subscriber();
+      return;
+    }
     if (method !== "account/rateLimits/updated") return;
     for (const subscriber of this.#updateSubscribers) {
       subscriber();

@@ -16,6 +16,22 @@ export type InspectorStatusModel = {
     | { kind: "link"; label: string; href: string };
 };
 
+export type StaleReason = "invalid-data" | "codex-missing" | "sign-in-required" | "incompatible" | "timeout" | "refresh-failed";
+
+const staleDetails: Record<StaleReason, string> = {
+  "invalid-data": "The selected group returned unusable data. The last good values remain visible.",
+  "codex-missing": "Codex could not be found. Check its path and retry; the last good values remain visible.",
+  "sign-in-required": "Codex requires sign-in. The last good values remain visible.",
+  incompatible: "Codex returned an unsupported response. The last good values remain visible.",
+  timeout: "The Codex request timed out. The last good values remain visible.",
+  "refresh-failed": "The refresh failed. Check Codex and retry; the last good values remain visible.",
+};
+
+export function staleDetail(value: unknown): string | undefined {
+  return typeof value === "string" && Object.hasOwn(staleDetails, value)
+    ? staleDetails[value as StaleReason] : undefined;
+}
+
 const models: Record<InspectorStatusId, InspectorStatusModel> = {
   "group-unavailable": {
     title: "Group unavailable",

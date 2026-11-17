@@ -181,6 +181,14 @@ test("inspector shows the last successful update and rejects invalid timestamps"
   }
 });
 
+test("stale status explains a safe categorized reason and ignores unknown values", () => {
+  const host = setup("daily-tokens");
+  host.receive({status: "stale", lastSuccessAt: 1, staleReason: "timeout"});
+  assert.match(host.byId("status-detail").textContent, /timed out/i);
+  host.receive({status: "stale", lastSuccessAt: 1, staleReason: "<script>private</script>"});
+  assert.equal(host.byId("status-detail").textContent, "The last good values remain visible.");
+});
+
 
 for (const action of ["codex-limits", "limit-browser"]) {
   test(`${action} saves the selected group locally and preserves it when options disappear`, () => {
