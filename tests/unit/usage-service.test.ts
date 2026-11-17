@@ -370,9 +370,9 @@ test("close closes the provider exactly once", async () => {
 
 test("malformed group retains only its own stale data while another group updates", async (t) => {
   const provider = new FakeProvider([
-    mapLimitGroups({rateLimitsByLimitId: {codex: {primary: {usedPercent: 10}}, other: {primary: {usedPercent: 60}}}}, 1000),
-    mapLimitGroups({rateLimitsByLimitId: {codex: {primary: {usedPercent: 20}}, other: {primary: {usedPercent: 900}}}}, 2000),
-    mapLimitGroups({rateLimitsByLimitId: {codex: {primary: {usedPercent: 30}}}}, 3000),
+    mapLimitGroups({accountId: "synthetic-A", rateLimitsByLimitId: {codex: {primary: {usedPercent: 10}}, other: {primary: {usedPercent: 60}}}}, 1000),
+    mapLimitGroups({accountId: "synthetic-A", rateLimitsByLimitId: {codex: {primary: {usedPercent: 20}}, other: {primary: {usedPercent: 900}}}}, 2000),
+    mapLimitGroups({accountId: "synthetic-A", rateLimitsByLimitId: {codex: {primary: {usedPercent: 30}}}}, 3000),
   ]);
   const service = new UsageService(provider);
   t.after(() => service.close());
@@ -406,9 +406,9 @@ test("a notification during an in-flight read schedules one full follow-up read"
 
 test("a group cache survives refresh when the automatic group has no valid snapshot", async (t) => {
   const provider = new FakeProvider([
-    mapLimitGroups({rateLimitsByLimitId: {z: {primary: {usedPercent: 60}}}}, 1000),
-    mapLimitGroups({rateLimitsByLimitId: {a: {}, z: {primary: {usedPercent: 900}}}}, 2000),
-    mapLimitGroups({rateLimitsByLimitId: {a: {}, z: {primary: {usedPercent: 900}}}}, 3000),
+    mapLimitGroups({accountId: "synthetic-A", rateLimitsByLimitId: {z: {primary: {usedPercent: 60}}}}, 1000),
+    mapLimitGroups({accountId: "synthetic-A", rateLimitsByLimitId: {a: {}, z: {primary: {usedPercent: 900}}}}, 2000),
+    mapLimitGroups({accountId: "synthetic-A", rateLimitsByLimitId: {a: {}, z: {primary: {usedPercent: 900}}}}, 3000),
   ]);
   const service = new UsageService(provider);
   t.after(() => service.close());

@@ -46,6 +46,47 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+test("account notification clears cached quota and token-only surfaces even without account IDs", async (t) => {
+  let notify!: () => void;
+  let tokenReads = 0;
+  const service = new UsageService({
+    read: async () => collection(null, null),
+    readTokenUsage: async () => tokens(++tokenReads),
+    subscribeAccountUpdates: (callback: () => void) => { notify = callback; return () => {}; },
+    close: async () => {},
+  });
+  t.after(() => service.close());
+  await service.refresh();
+  service.subscribeTokenUsage(() => {});
+  await service.refreshTokenUsage();
+  notify();
+  assert.equal(service.getState().snapshot, null);
+  assert.equal(service.getTokenUsageState().snapshot, null);
+  await service.refreshTokenUsage();
+  assert.equal(service.getTokenUsageState().snapshot?.capturedAt, 2);
+});
+
+test("an old quota response cannot overwrite data after an account notification", async (t) => {
+  let notify!: () => void;
+  const pending = deferred<UsageCollection>();
+  let reads = 0;
+  const service = new UsageService({
+    read: () => ++reads === 1 ? pending.promise : Promise.resolve(collection(null, null, 30)),
+    readTokenUsage: async () => tokens(1),
+    subscribeAccountUpdates: (callback: () => void) => { notify = callback; return () => {}; },
+    close: async () => {},
+  });
+  t.after(() => service.close());
+  const old = service.refresh();
+  const rejected = assert.rejects(old);
+  await Promise.resolve();
+  notify();
+  await service.refresh();
+  pending.resolve(collection(null, null, 10));
+  await rejected;
+  assert.equal(service.getState().snapshot?.fiveHour?.remainingPercent, 70);
+});
+
 for (const permission of [false, true, null]) {
   test(`mapping preserves backend permission ${permission} and opaque account identity`, () => {
     const mapped = collection("synthetic-A", permission);
@@ -128,7 +169,7 @@ test("account-wide permission updates still apply when a bucket retains stale us
   );
 });
 
-test("unavailable identity and permission do not imply recovery from an explicit denial", async (t) => {
+test("unavailable identity does not attribute an earlier denial to the current account", async (t) => {
   const incoming = [
     collection(null, false),
     collection(null, null, 0),
@@ -144,7 +185,7 @@ test("unavailable identity and permission do not imply recovery from an explicit
   await service.refresh();
   assert.equal(
     service.getState().snapshot?.accountHealth.ordinaryUsageAllowed,
-    false,
+    null,
   );
   await service.refresh();
   assert.equal(
@@ -173,7 +214,7 @@ for (const [previous, next] of [
   });
 }
 
-test("legacy responses without account identity keep existing stale quota behavior", async (t) => {
+test("legacy responses without account identity do not reuse an invalid group's old quota", async (t) => {
   const incoming = [collection(null, null), collection(null, null, 900)];
   const service = new UsageService({
     read: async () => incoming.shift()!,
@@ -183,8 +224,7 @@ test("legacy responses without account identity keep existing stale quota behavi
   t.after(() => service.close());
   await service.refresh();
   await service.refresh();
-  assert.equal(service.getState().snapshot?.fiveHour?.remainingPercent, 90);
-  assert.equal(service.getState().snapshot?.stale, true);
+  assert.equal(service.getState().snapshot, null);
 });
 
 test("known account change clears cached token usage", async (t) => {

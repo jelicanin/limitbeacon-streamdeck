@@ -52,8 +52,7 @@ test("multiple surfaces share reads, preserve group identity through failures, a
   response = {rateLimitsByLimitId: {codex: limits(20), research: {...limits(700), limitName: "Research <safe>"}}};
   await service.refresh();
   assert.match(svg("default"), />80%</u);
-  assert.match(svg("research"), />30%</u);
-  assert.match(svg("research"), />STALE</u);
+  assert.match(svg("research"), /Group unavailable/u);
   response = {rateLimitsByLimitId: {codex: limits(25)}};
   await service.refresh();
   assert.match(svg("research"), /Group unavailable/u);
