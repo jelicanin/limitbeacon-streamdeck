@@ -162,7 +162,7 @@ export class LimitBrowserController {
       await this.#service.refresh();
       if (this.#isCurrent(dial, generation)) this.#render(dial);
     } catch {
-      if (this.#isCurrent(dial, generation)) await dial.target.showAlert();
+      if (this.#dials.get(id) === dial) await dial.target.showAlert().catch(() => {});
     }
   }
 

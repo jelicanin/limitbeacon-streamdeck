@@ -86,6 +86,12 @@ test("preserves absent reset and duration values as null", () => {
   assert.notEqual(snapshot.fiveHour?.resetsAt, capturedAt);
 });
 
+test("keeps usage available when the reset timestamp exceeds the supported date range", () => {
+  const snapshot = mapRateLimits({ rateLimits: { primary: primary(25, { resetsAt: 9e15 }) } });
+  assert.equal(snapshot.fiveHour?.remainingPercent, 75);
+  assert.equal(snapshot.fiveHour?.resetsAt, null);
+});
+
 test("computes remaining percentage from used percentage", () => {
   const snapshot = mapRateLimits({ rateLimits: { primary: primary(33.3) } }, capturedAt);
 

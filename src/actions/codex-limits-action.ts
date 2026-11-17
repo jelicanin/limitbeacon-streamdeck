@@ -79,7 +79,7 @@ export class CodexLimitsController {
       key.settings = normalizeSettings(rawSettings);
       this.#service.rerender();
     } catch {
-      void key.target.showAlert();
+      void key.target.showAlert().catch(() => {});
     }
   }
 
@@ -100,14 +100,14 @@ export class CodexLimitsController {
       await this.#service.refresh();
       await key.target.showOk();
     } catch {
-      await key.target.showAlert();
+      await key.target.showAlert().catch(() => {});
     }
   }
 
   #render(key: VisibleKey, state: UsageServiceState): void {
     state = selectUsageGroup(state, key.settings.limitGroupId);
     const image = renderKey(toViewModel(state, key.settings));
-    void key.target.setImage(svgDataUrl(image)).catch(() => key.target.showAlert());
+    void key.target.setImage(svgDataUrl(image)).catch(() => key.target.showAlert()).catch(() => {});
     if (this.#inspector?.keyId === key.target.id) {
       void this.#inspector.send(inspectorConnectionPayload(state)).catch(() => {});
     }

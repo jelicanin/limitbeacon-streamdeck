@@ -179,7 +179,7 @@ export class SpecializedDialController {
       else await this.#service.refreshTokenUsage();
       if (this.#isCurrent(dial, generation)) this.#render(dial);
     } catch {
-      if (this.#isCurrent(dial, generation)) await dial.target.showAlert();
+      if (this.#dials.get(id) === dial) await dial.target.showAlert().catch(() => {});
     }
   }
 

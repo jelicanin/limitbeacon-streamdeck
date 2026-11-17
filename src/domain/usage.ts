@@ -87,11 +87,12 @@ function mapWindow(value: unknown, label: string): UsageWindow {
   }
 
   const usedPercent = readPercentage(value.usedPercent);
+  const resetsAt = readNullableNonNegativeNumber(value, "resetsAt");
   return {
     usedPercent,
     remainingPercent: 100 - usedPercent,
     durationMinutes: readNullableNonNegativeNumber(value, "windowDurationMins"),
-    resetsAt: readNullableNonNegativeNumber(value, "resetsAt"),
+    resetsAt: resetsAt !== null && Number.isFinite(new Date(resetsAt * 1_000).getTime()) ? resetsAt : null,
   };
 }
 

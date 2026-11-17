@@ -179,6 +179,27 @@ class FakeDial {
   }
 }
 
+for (const kind of ["daily", "credits", "activity"] as const) {
+  test(`${kind} dial alerts when a failed refresh publishes an error state`, async () => {
+    const service = new FakeService();
+    service.refresh = async () => {
+      service.rateState = { status: "error", snapshot: null, error: new Error("offline") };
+      for (const subscriber of service.rateSubscribers) subscriber(service.rateState);
+      throw new Error("offline");
+    };
+    service.refreshTokenUsage = async () => {
+      service.tokenState = { status: "error", snapshot: null, error: new Error("offline") };
+      for (const subscriber of service.tokenSubscribers) subscriber(service.tokenState);
+      throw new Error("offline");
+    };
+    const controller = new SpecializedDialController(service, kind);
+    const dial = new FakeDial("refresh-error");
+    controller.appear(dial, {});
+    await controller.press(dial.id);
+    assert.equal(dial.alertCount, 1);
+  });
+}
+
 function latestSvg(dial: FakeDial): string {
   const canvas = dial.feedback.at(-1)?.canvas;
   assert.equal(typeof canvas, "string");
