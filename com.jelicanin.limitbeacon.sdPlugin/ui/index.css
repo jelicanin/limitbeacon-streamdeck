@@ -12,8 +12,7 @@ body { margin: 0; background: #2d2d2d; }
 main { width: 100%; max-width: 100%; padding: 10px 12px 12px; }
 
 .tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
   gap: 3px;
   padding: 3px;
   margin-bottom: 12px;
@@ -22,9 +21,10 @@ main { width: 100%; max-width: 100%; padding: 10px 12px 12px; }
 }
 
 .tabs button {
+  flex: 1 1 0;
   min-width: 0;
   min-height: 28px;
-  padding: 4px 8px;
+  padding: 4px 2px;
   border: 0;
   border-radius: 5px;
   color: #aeb7bd;
@@ -223,3 +223,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, .action-link:fo
 }
 
 #test-connection { margin-bottom: 8px; }
+.color-setting { display: grid; grid-template-columns: minmax(0, 1fr) 38px minmax(80px, 1fr); align-items: center; gap: 6px; margin-bottom: 8px; }
+.color-setting label { display: block; margin: 0; }
+.color-setting input[type="color"] { padding: 2px; height: 30px; }
+.outline-setting input { width: 18px; min-height: 18px; }
+#reset-appearance { padding: 5px 9px; color: #f5f7f8; background: #202124; border: 1px solid #575b5f; border-radius: 5px; cursor: pointer; }
+.appearance-previews { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; text-align: center; }
+.appearance-previews figure { margin: 0; min-width: 0; }
+.appearance-previews img { display: block; width: 100%; max-width: 96px; aspect-ratio: 1; margin: 0 auto 3px; }
+.appearance-previews figcaption { font-size: 12px; color: #cbd3d9; }
+.appearance-previews .help { display: block; margin: 3px 0 0; font-size: 11px; }

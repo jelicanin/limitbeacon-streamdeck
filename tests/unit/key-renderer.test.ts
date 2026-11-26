@@ -2,6 +2,29 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { renderKey, type UsageKeyViewModel } from "../../src/render/key-renderer.js";
+import { normalizeAppearance } from "../../src/domain/settings.js";
+
+test("appearance applies safely to both indicators and preserves alert colours", () => {
+  const appearance = normalizeAppearance({background: "#112233", text: "#abcdef", healthy: "#123456", outline: true, outlineColor: "#654321"});
+  for (const displayStyle of ["bars", "rings"] as const) {
+    for (const [severity, color] of [["healthy", "#123456"], ["warning", "#F2B84B"], ["critical", "#FF6B6B"]] as const) {
+      const svg = renderKey(usage({displayStyle, stale: true, window: {label:"5H", percent: 10, reset:null, severity}}), appearance);
+      assert.match(svg, new RegExp(`(?:fill|stroke)="${color}"`));
+      assert.match(svg, /fill="#112233"/u);
+      assert.match(svg, /stroke="#654321"/u);
+      assert.match(svg, /fill: #ABCDEF/u);
+      assert.match(svg, />STALE</u);
+    }
+  }
+  for (const tone of ["loading", "error", "setup"] as const) {
+    const svg = renderKey({type:"message", tone, title:"Unavailable", hint:"Retry"}, appearance);
+    assert.match(svg, /fill="#112233"/u);
+    assert.match(svg, /stroke="#654321"/u);
+    if (tone === "error") assert.match(svg, /#FF6B6B/u);
+  }
+  assert.doesNotMatch(renderKey(usage()), /stroke="#55C7E8" stroke-width="4"/u);
+  assert.doesNotMatch(renderKey(usage(), { ...appearance, background: '" onload="bad' }), /onload/u);
+});
 
 function usage(overrides: Partial<UsageKeyViewModel> = {}): UsageKeyViewModel {
   return {

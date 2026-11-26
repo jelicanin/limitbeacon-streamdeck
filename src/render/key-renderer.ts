@@ -1,3 +1,5 @@
+import { normalizeAppearance, type Appearance } from "../domain/settings.js";
+
 export type Severity = "healthy" | "warning" | "critical";
 
 export type UsageKeyViewModel = {
@@ -39,30 +41,31 @@ const xmlEntities: Record<string, string> = {
   "'": "&apos;",
 };
 
-export function renderKey(model: KeyViewModel): string {
-  return model.type === "usage" ? renderUsage(model) : renderMessage(model);
+export function renderKey(model: KeyViewModel, appearance?: Appearance): string {
+  const safe = normalizeAppearance(appearance);
+  return model.type === "usage" ? renderUsage(model, safe) : renderMessage(model, safe);
 }
 
-function renderUsage(model: UsageKeyViewModel): string {
-  if (model.displayStyle === "rings") return renderRingUsage(model);
+function renderUsage(model: UsageKeyViewModel, appearance: Appearance): string {
+  if (model.displayStyle === "rings") return renderRingUsage(model, appearance);
 
   const basis = model.basis === "remaining" ? "LEFT" : "USED";
-  const row = renderSingleRow(model.window, basis);
+  const row = renderSingleRow(model.window, basis, appearance);
 
   return svg(withGroupLabel(`
-    ${model.stale ? '<text x="132" y="15" class="stale">STALE</text>' : ""}
+    ${model.stale ? '<text x="72" y="114" class="stale">STALE</text>' : ""}
     ${row}
-  `, model.groupLabel));
+  `, model.groupLabel), appearance);
 }
 
-function renderRingUsage(model: UsageKeyViewModel): string {
+function renderRingUsage(model: UsageKeyViewModel, appearance: Appearance): string {
   const basis = model.basis === "remaining" ? "LEFT" : "USED";
-  const ring = renderSingleRing(model.window, basis);
+  const ring = renderSingleRing(model.window, basis, appearance);
 
   return svg(withGroupLabel(`
-    ${model.stale ? '<text x="132" y="15" class="stale">STALE</text>' : ""}
+    ${model.stale ? '<text x="72" y="114" class="stale">STALE</text>' : ""}
     ${ring}
-  `, model.groupLabel));
+  `, model.groupLabel), appearance);
 }
 
 function withGroupLabel(content: string, label: string | undefined): string {
@@ -72,8 +75,8 @@ function withGroupLabel(content: string, label: string | undefined): string {
     <g transform="translate(0 20) scale(1 0.85)">${content}</g>`;
 }
 
-function renderSingleRing(row: UsageRow, basis: string): string {
-  const color = colors[row.severity];
+function renderSingleRing(row: UsageRow, basis: string, appearance: Appearance): string {
+  const color = row.severity === "healthy" ? appearance.healthy : colors[row.severity];
   return `
     <text x="72" y="17" class="single-ring-label">${escapeXml(row.label)} · ${basis}</text>
     <circle cx="72" cy="67" r="38" class="ring-track"/>
@@ -83,8 +86,8 @@ function renderSingleRing(row: UsageRow, basis: string): string {
   `;
 }
 
-function renderSingleRow(row: UsageRow, basis: string): string {
-  const color = colors[row.severity];
+function renderSingleRow(row: UsageRow, basis: string, appearance: Appearance): string {
+  const color = row.severity === "healthy" ? appearance.healthy : colors[row.severity];
   return `
     <text x="72" y="24" class="single-label">${escapeXml(row.label)} <tspan class="signal" fill="${color}">●</tspan> ${basis}</text>
     <text x="72" y="82" class="single-value" fill="${color}">${formatPercent(row.percent)}</text>
@@ -94,13 +97,13 @@ function renderSingleRow(row: UsageRow, basis: string): string {
   `;
 }
 
-function renderMessage(model: MessageKeyViewModel): string {
+function renderMessage(model: MessageKeyViewModel, appearance: Appearance): string {
   if (model.tone === "loading") {
     return svg(`
       <circle cx="72" cy="50" r="27" class="loader-track"/>
       <circle cx="72" cy="50" r="27" class="loader"/>
       <text x="72" y="105" class="loader-name">LimitBeacon</text>
-    `);
+    `, appearance);
   }
 
   const color = model.tone === "error" ? colors.critical : colors.healthy;
@@ -110,15 +113,16 @@ function renderMessage(model: MessageKeyViewModel): string {
     <text x="72" y="50" class="message-symbol" fill="${color}">${symbol}</text>
     <text x="72" y="82" class="message-title">${escapeXml(model.title)}</text>
     <text x="72" y="105" class="message-hint">${escapeXml(model.hint)}</text>
-  `);
+  `, appearance);
 }
 
-function svg(content: string): string {
+function svg(content: string, appearance: Appearance): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
-  <rect width="144" height="144" rx="18" fill="#071827"/>
+  <rect width="144" height="144" rx="18" fill="${appearance.background}"/>
+  ${appearance.outline ? `<rect x="2" y="2" width="140" height="140" rx="16" fill="none" stroke="${appearance.outlineColor}" stroke-width="4"/>` : ""}
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    .stale { fill: #F2B84B; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-anchor: end; }
+    .stale { fill: #F2B84B; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-anchor: middle; }
     .signal { font-size: 13px; font-weight: 800; baseline-shift: 1px; }
     .meter-track { fill: #233743; }
     .single-label { fill: #A9C0CF; font-size: 18px; font-weight: 700; text-anchor: middle; }
@@ -137,7 +141,8 @@ function svg(content: string): string {
     .loader-track { stroke: #233743; }
     .loader { stroke: #55C7E8; stroke-linecap: round; stroke-dasharray: 102 68; transform: rotate(-90deg); transform-origin: 72px 50px; }
     .loader-name { fill: #E9F3F8; font-size: 17px; font-weight: 800; text-anchor: middle; }
-  </style>${content}</svg>`;
+    ${appearance.text === null ? "" : `.single-label, .single-reset, .single-ring-label, .single-ring-reset, .message-title, .message-hint, .loader-name { fill: ${appearance.text}; }`}
+  </style>${appearance.text === null ? content : content.replace('fill="#A9C0CF"', `fill="${appearance.text}"`)}</svg>`;
 }
 
 function formatPercent(value: number): string {

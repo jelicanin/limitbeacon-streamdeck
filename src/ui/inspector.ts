@@ -1,6 +1,7 @@
-import { normalizeSettings, type LimitBeaconSettings } from "../domain/settings.js";
+import { normalizeAppearance, normalizeSettings, validHexColor, type Appearance, type LimitBeaconSettings } from "../domain/settings.js";
 import { normalizeDialSettings, type DialSettings } from "../domain/dial-settings.js";
 import { normalizeNeoSettings } from "../domain/neo-settings.js";
+import { renderKey, type Severity } from "../render/key-renderer.js";
 import {
   inspectorStatusModel,
   staleDetail,
@@ -63,6 +64,10 @@ let isNeoInspector = false;
 let neoSettings = normalizeNeoSettings(undefined);
 let specializedDial: { title: string; detail: string; controls: string } | undefined;
 let dialSettings = normalizeDialSettings(undefined);
+let appearance: Appearance | undefined;
+let lastValidKeySettings = normalizeSettings(undefined);
+let keyEditedLocally = false;
+const colorFields = ["background", "text", "healthy", "outlineColor"] as const;
 
 window.connectElgatoStreamDeckSocket = (port, inspectorId, registerEvent, info, actionInfo) => {
   propertyInspectorId = inspectorId;
@@ -90,7 +95,7 @@ for (const button of tabButtons) {
   button.tabIndex = button.getAttribute("aria-selected") === "true" ? 0 : -1;
   button.addEventListener("click", () => selectTab(button));
   button.addEventListener("keydown", (event) => {
-    const buttons = Array.from(tabButtons);
+    const buttons = Array.from(tabButtons).filter(candidate => !candidate.hidden);
     const index = buttons.indexOf(button);
     const targetIndex = event.key === "ArrowRight" ? (index + 1) % buttons.length
       : event.key === "ArrowLeft" ? (index - 1 + buttons.length) % buttons.length
@@ -104,6 +109,50 @@ for (const button of tabButtons) {
     selectTab(target);
     target.focus();
   });
+}
+
+for (const field of colorFields) {
+  const picker = requiredElement<HTMLInputElement>(`${field}-picker`);
+  const input = requiredElement<HTMLInputElement>(`${field}-text`);
+  const update = (value: string) => {
+    if (!validHexColor(value)) {
+      requiredElement("appearance-error").hidden = false;
+      return;
+    }
+    appearance = { ...normalizeAppearance(appearance), [field]: value.toUpperCase() };
+    syncAppearance();
+    saveAppearance();
+  };
+  picker.addEventListener("input", () => update(picker.value));
+  input.addEventListener("input", () => update(input.value));
+}
+requiredElement<HTMLInputElement>("outline-enabled").addEventListener("change", (event) => {
+  appearance = { ...normalizeAppearance(appearance), outline: (event.target as HTMLInputElement).checked };
+  saveAppearance();
+});
+requiredElement("reset-appearance").addEventListener("click", () => {
+  appearance = undefined;
+  syncAppearance();
+  saveAppearance();
+});
+
+function syncAppearance(): void {
+  const current = normalizeAppearance(appearance);
+  for (const field of colorFields) {
+    const value = current[field] ?? "#A9C0CF";
+    requiredElement<HTMLInputElement>(`${field}-picker`).value = value;
+    requiredElement<HTMLInputElement>(`${field}-text`).value = value;
+  }
+  requiredElement<HTMLInputElement>("outline-enabled").checked = current.outline;
+  requiredElement("appearance-error").hidden = true;
+  renderAppearancePreviews();
+}
+
+function saveAppearance(): void {
+  if (isDialInspector || isNeoInspector) return;
+  renderAppearancePreviews();
+  keyEditedLocally = true;
+  send({event: "setSettings", action: actionId, context: propertyInspectorId, payload: keySettings(lastValidKeySettings)});
 }
 
 connectionTest.addEventListener("click", () => {
@@ -122,6 +171,7 @@ form.addEventListener("change", (event) => {
   const name = event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement
     ? event.target.name
     : "";
+  if (!isDialInspector && !isNeoInspector && keySettingNames.has(name)) renderAppearancePreviews();
   if (name === "limitGroupId") selectedGroupId = groupSelect.value;
   if (isNeoInspector && (name === "limitGroupId" || name === "window")) {
     neoSettings = normalizeNeoSettings({limitGroupId:selectedGroupId,
@@ -142,6 +192,8 @@ form.addEventListener("change", (event) => {
   const settings = readForm();
   if (settings === null) return;
   if (!isDialInspector && !isNeoInspector && keySettingNames.has(name)) {
+    lastValidKeySettings = settings;
+    keyEditedLocally = true;
     send({
       event: "setSettings",
       action: actionId,
@@ -166,7 +218,7 @@ function receive(raw: unknown): void {
     if (message.event === "didReceiveSettings") {
       if (isNeoInspector) setNeoForm(payload.settings);
       else if (isBrowserDialInspector) setDialForm(payload.settings);
-      else if (specializedDial === undefined) setKeyForm(payload.settings);
+      else if (specializedDial === undefined && !keyEditedLocally) setKeyForm(payload.settings);
     }
     if (message.event === "didReceiveGlobalSettings") setGlobalForm(payload.settings);
     if (message.event === "sendToPropertyInspector" && isStatus(payload.status)) {
@@ -236,6 +288,9 @@ function configureInspector(): void {
 
 function setKeyForm(raw: unknown): void {
   const settings = normalizeSettings(raw);
+  lastValidKeySettings = settings;
+  appearance = settings.appearance;
+  syncAppearance();
   selectedGroupId = settings.limitGroupId;
   renderGroupOptions();
   setField("window", settings.window);
@@ -244,6 +299,35 @@ function setKeyForm(raw: unknown): void {
   setField("resetStyle", settings.resetStyle);
   setField("warningThreshold", settings.warningThreshold);
   setField("criticalThreshold", settings.criticalThreshold);
+  renderAppearancePreviews();
+}
+
+function renderAppearancePreviews(): void {
+  if (isDialInspector || isNeoInspector) return;
+  const data = new FormData(form);
+  const warning = Number(data.get("warningThreshold"));
+  const critical = Number(data.get("criticalThreshold"));
+  const validThresholds = data.get("warningThreshold") !== "" && data.get("criticalThreshold") !== ""
+    && Number.isFinite(warning) && Number.isFinite(critical)
+    && critical >= 0 && warning <= 100 && critical <= warning;
+  const w = validThresholds ? warning : lastValidKeySettings.warningThreshold;
+  const c = validThresholds ? critical : lastValidKeySettings.criticalThreshold;
+  const style = data.get("displayStyle") === "rings" ? "rings" : "bars";
+  const basis = data.get("basis") === "used" ? "used" : "remaining";
+  const examples: [Severity, number | null][] = [
+    ["healthy", w < 100 ? Math.ceil((w + 100) / 2) : null],
+    ["warning", Math.floor(w) > c ? Math.floor((Math.floor(w) + c + 1) / 2) : null],
+    ["critical", Math.floor(c / 2)],
+  ];
+  for (const [severity, remaining] of examples) {
+    const image = requiredElement<HTMLImageElement>(`preview-${severity}`);
+    image.hidden = remaining === null;
+    requiredElement(`preview-${severity}-unavailable`).hidden = remaining !== null;
+    if (remaining === null) continue;
+    const svg = renderKey({type: "usage", basis, displayStyle: style, stale: false,
+      window: {label: "5H", percent: basis === "used" ? 100 - remaining : remaining, reset: "2h 14m", severity}}, appearance);
+    image.setAttribute("src", `data:image/svg+xml,${encodeURIComponent(svg)}`);
+  }
 }
 
 function setGlobalForm(raw: unknown): void {
@@ -342,6 +426,7 @@ function readActionInfo(raw: string): { id: string; settings: unknown } {
 
 function keySettings(settings: LimitBeaconSettings): object {
   return {
+    ...(appearance === undefined ? {} : { appearance }),
     limitGroupId: settings.limitGroupId,
     window: settings.window,
     basis: settings.basis,

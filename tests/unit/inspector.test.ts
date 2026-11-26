@@ -98,11 +98,14 @@ function setup(actionName = "codex-limits", settings: object = {}) {
       const input = form.elements.namedItem(name) as Element;
       input.value = value;
       const event = new Event("change");
-      Object.defineProperty(event, "target", {value: input});
+      Object.defineProperty(event, "target", {value: input instanceof RadioList ? nodes.find(node => node.name === name) : input});
       form.dispatchEvent(event);
     },
     receive(payload: unknown) {
       socket.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({event: "sendToPropertyInspector", payload}) }));
+    },
+    receiveSettings(settings: unknown) {
+      socket.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({event: "didReceiveSettings", payload: {settings}}) }));
     },
   };
 }
@@ -150,6 +153,67 @@ test("tabs support roving focus, arrows with wrapping, Home and End", () => {
   advanced.click();
   assert.equal(advanced.tabIndex, 0);
   assert.equal(host.byId("advanced-panel").hidden, false);
+});
+
+test("appearance saves and resets using last valid key settings despite invalid unrelated fields", () => {
+  const host = setup("codex-limits", {window:"secondary", warningThreshold:40, criticalThreshold:20, basis:"used"});
+  host.change("warningThreshold", "10");
+  host.change("refreshMinutes", "0");
+  const input = host.byId("background-text");
+  input.value = "#123456";
+  input.dispatchEvent(new Event("input"));
+  const saved = host.sent.at(-1)!.payload as Record<string, unknown>;
+  assert.equal(saved.warningThreshold, 40);
+  assert.equal(saved.criticalThreshold, 20);
+  assert.equal(saved.window, "secondary");
+  assert.equal(saved.basis, "used");
+  assert.equal((saved.appearance as {background:string}).background, "#123456");
+  host.byId("reset-appearance").click();
+  const reset = host.sent.at(-1)!.payload as Record<string, unknown>;
+  assert.equal(reset.appearance, undefined);
+  assert.equal(reset.warningThreshold, 40);
+  assert.equal(reset.window, "secondary");
+  assert.equal(host.byId("threshold-error").hidden, false);
+});
+
+test("rapid changes and reset survive delayed host settings responses", () => {
+  const host = setup("codex-limits", {basis:"used", warningThreshold:40, criticalThreshold:20});
+  const input = host.byId("background-picker");
+  input.value = "#112233";
+  input.dispatchEvent(new Event("input"));
+  const first = host.sent.at(-1)!.payload;
+  input.value = "#445566";
+  input.dispatchEvent(new Event("input"));
+  const second = host.sent.at(-1)!.payload;
+  host.receiveSettings(first);
+  assert.equal(host.byId("background-text").value, "#445566");
+  host.change("window", "secondary");
+  assert.equal(((host.sent.at(-1)!.payload as {appearance:{background:string}}).appearance).background, "#445566");
+  host.byId("reset-appearance").click();
+  host.receiveSettings(second);
+  assert.equal(host.byId("background-text").value, "#071827");
+  host.change("basis", "remaining");
+  const final = host.sent.at(-1)!.payload as Record<string, unknown>;
+  assert.equal(final.appearance, undefined);
+  assert.equal(final.window, "secondary");
+});
+
+test("host settings hydrate before edits and the final rapid write survives inspector reopening", () => {
+  const host = setup("codex-limits", {});
+  host.receiveSettings({window:"secondary", appearance:{background:"#101010"}});
+  assert.equal(host.byId("background-text").value, "#101010");
+  const picker = host.byId("background-picker");
+  for (const value of ["#223344", "#556677", "#8899AA"]) {
+    picker.value = value;
+    picker.dispatchEvent(new Event("input"));
+  }
+  const writes = host.sent.filter(message => message.event === "setSettings");
+  const persisted = writes.at(-1)!.payload as Record<string, unknown>;
+  host.receiveSettings(writes[0]!.payload);
+  assert.equal(host.byId("background-text").value, "#8899AA");
+  const reopened = setup("codex-limits", persisted);
+  assert.equal(reopened.byId("background-text").value, "#8899AA");
+  assert.equal(reopened.byId("quota-window").value, "secondary");
 });
 
 for (const action of ["codex-limits", "limit-browser", "daily-tokens", "credits-spend", "activity-stats", "neo-limits"]) {
@@ -256,4 +320,88 @@ test("legacy key settings expose automatic quota selection without changing dial
   for (const action of ["limit-browser", "daily-tokens", "credits-spend", "activity-stats"]) {
     assert.equal(setup(action).byId("quota-window-field").hidden, true);
   }
+});
+
+test("appearance persists per key, rejects invalid input, and resets without changing other settings", () => {
+  const host = setup("codex-limits", {basis: "used", appearance: {background: "#123456", healthy: "#abcdef"}});
+  assert.equal(host.byId("background-text").value, "#123456");
+  assert.equal(host.byId("healthy-picker").value, "#ABCDEF");
+  const text = host.byId("background-text");
+  const before = host.sent.length;
+  text.value = "#bad";
+  text.dispatchEvent(new Event("input"));
+  assert.equal(host.sent.length, before);
+  assert.equal(host.byId("appearance-error").hidden, false);
+  text.value = "#010203";
+  text.dispatchEvent(new Event("input"));
+  let payload = host.sent.at(-1)!.payload as {basis: string; appearance: {background: string}};
+  assert.equal(payload.basis, "used");
+  assert.equal(payload.appearance.background, "#010203");
+  host.change("window", "secondary");
+  payload = host.sent.at(-1)!.payload as typeof payload;
+  assert.equal(payload.appearance.background, "#010203");
+  host.byId("reset-appearance").click();
+  const reset = host.sent.at(-1)!.payload as Record<string, unknown>;
+  assert.equal(reset.appearance, undefined);
+  assert.equal(reset.window, "secondary");
+  assert.equal(host.byId("background-text").value, "#071827");
+});
+
+test("appearance tab is excluded from dial and Neo navigation and settings", () => {
+  for (const action of ["limit-browser", "daily-tokens", "credits-spend", "activity-stats", "neo-limits"]) {
+    const host = setup(action);
+    assert.equal(host.byId("appearance-tab").hidden, true);
+    const general = host.byId("general-tab");
+    const event = new Event("keydown", {cancelable: true});
+    Object.defineProperty(event, "key", {value:"ArrowRight"});
+    general.dispatchEvent(event);
+    assert.equal(host.byId("advanced-tab").getAttribute("aria-selected"), "true");
+    const before = host.sent.length;
+    host.byId("reset-appearance").click();
+    assert.equal(host.sent.length, before);
+  }
+});
+
+test("appearance examples render the selected style, basis, thresholds and colours without a refresh", () => {
+  const host = setup("codex-limits", {displayStyle:"rings", basis:"used", warningThreshold:40, criticalThreshold:20});
+  const svg = (name: string) => decodeURIComponent(host.byId(`preview-${name}`).getAttribute("src")!.split(",")[1]!);
+  assert.match(svg("healthy"), /class="ring-fill"/u);
+  assert.match(svg("healthy"), />30%</u);
+  assert.match(svg("warning"), />70%</u);
+  assert.match(svg("warning"), /stroke="#F2B84B"/u);
+  assert.match(svg("critical"), />90%</u);
+  assert.match(svg("critical"), /stroke="#FF6B6B"/u);
+  const before = host.sent.length;
+  const background = host.byId("background-text");
+  background.value = "#112233";
+  background.dispatchEvent(new Event("input"));
+  assert.match(svg("healthy"), /fill="#112233"/u);
+  assert.match(svg("warning"), /fill="#112233"/u);
+  const healthy = host.byId("healthy-picker");
+  healthy.value = "#00AA77";
+  healthy.dispatchEvent(new Event("input"));
+  assert.match(svg("healthy"), /stroke="#00AA77"/u);
+  assert.match(svg("warning"), /stroke="#F2B84B"/u);
+  const outline = host.byId("outline-enabled") as Element & {checked: boolean};
+  outline.checked = true;
+  outline.dispatchEvent(new Event("change"));
+  assert.match(svg("critical"), /stroke="#55C7E8" stroke-width="4"/u);
+  assert.equal(host.sent.slice(before).some(message => message.event === "sendToPlugin"), false);
+  host.change("displayStyle", "bars");
+  assert.match(svg("healthy"), /class="meter-fill"/u);
+  host.change("warningThreshold", "60");
+  assert.match(svg("warning"), />60%</u);
+  host.byId("reset-appearance").click();
+  assert.match(svg("healthy"), /fill="#071827"/u);
+});
+
+test("unreachable example ranges are explicitly labelled", () => {
+  const host = setup("codex-limits", {warningThreshold:100, criticalThreshold:100});
+  assert.equal(host.byId("preview-healthy").hidden, true);
+  assert.equal(host.byId("preview-warning").hidden, true);
+  assert.equal(host.byId("preview-healthy-unavailable").hidden, false);
+  assert.equal(host.byId("preview-critical").hidden, false);
+  host.change("criticalThreshold", "15");
+  assert.equal(host.byId("preview-warning").hidden, false);
+  assert.equal(host.byId("preview-healthy").hidden, true);
 });

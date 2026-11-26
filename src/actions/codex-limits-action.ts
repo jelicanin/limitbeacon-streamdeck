@@ -106,7 +106,7 @@ export class CodexLimitsController {
 
   #render(key: VisibleKey, state: UsageServiceState): void {
     state = selectUsageGroup(state, key.settings.limitGroupId);
-    const image = renderKey(toViewModel(state, key.settings));
+    const image = renderKey(toViewModel(state, key.settings), key.settings.appearance);
     void key.target.setImage(svgDataUrl(image)).catch(() => key.target.showAlert()).catch(() => {});
     if (this.#inspector?.keyId === key.target.id) {
       void this.#inspector.send(inspectorConnectionPayload(state)).catch(() => {});

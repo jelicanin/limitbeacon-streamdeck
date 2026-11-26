@@ -63,6 +63,10 @@ Only groups returned by your account are offered. An explicitly selected group t
 
 Daily Tokens and Activity Stats remain account-wide. Credits & Spend continues to use the automatic group's credit and spend data, plus account-wide reset credits; values from separate groups are never added together.
 
+### Customise a key
+
+For each **Codex Limits** key, use **Appearance** to choose background, text, healthy indicator and optional outline colours with a picker or six-digit hex values. Changes apply to the current key immediately. Warning and critical indicators keep their alert colours. **Reset appearance** restores the original palette and removes the outline without changing other settings. Choose colours with sufficient contrast for the key and its status labels.
+
 <table>
   <tr>
     <td width="50%"><img src="docs/assets/limitbeacon-dial-limit-browser.png" alt="Browse available Codex limits from a Stream Deck dial"></td>
@@ -100,6 +104,8 @@ Version 1.3.0 uses Elgato SDK 3 and requires Stream Deck 7.6 or later. Neo rende
 Install LimitBeacon from the [Elgato Marketplace](https://marketplace.elgato.com/product/limitbeacon-7e0006fc-2499-4957-a7df-9c594c4712cf), or download a `.streamDeckPlugin` installer from [GitHub Releases](https://github.com/jelicanin/limitbeacon-streamdeck/releases). Verify the installer against the accompanying SHA-256 checksum file when provided. Check the selected release's requirements before installing; the versions available through the two channels may differ.
 
 To run a development build from source:
+
+The commands below install and restart the plugin identified by `com.jelicanin.limitbeacon`. Do not use them alongside an installed copy with the same UUID if that copy must remain untouched; use a separate test environment or a separately identified development copy instead.
 
 ```bash
 npm ci

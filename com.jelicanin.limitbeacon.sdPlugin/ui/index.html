@@ -10,6 +10,7 @@
     <main>
       <nav class="tabs" role="tablist" aria-label="LimitBeacon settings">
         <button id="general-tab" type="button" role="tab" aria-selected="true" aria-controls="general-panel">General</button>
+        <button id="appearance-tab" data-key-only type="button" role="tab" aria-selected="false" aria-controls="appearance-panel">Appearance</button>
         <button id="advanced-tab" type="button" role="tab" aria-selected="false" aria-controls="advanced-panel">Advanced</button>
         <button id="help-tab" type="button" role="tab" aria-selected="false" aria-controls="help-panel">Help</button>
       </nav>
@@ -86,6 +87,29 @@
               <input name="criticalThreshold" type="number" min="0" max="100" step="1" value="15" />
             </label>
             <p class="error" id="threshold-error" hidden>Critical must not be higher than warning.</p>
+          </fieldset>
+        </section>
+
+        <section id="appearance-panel" class="tab-panel" role="tabpanel" aria-labelledby="appearance-tab" hidden>
+          <fieldset>
+            <legend>Appearance examples</legend>
+            <p class="help">Simulated usage; not your live Codex data.</p>
+            <div class="appearance-previews">
+              <figure><img id="preview-healthy" alt="Healthy example key" /><figcaption>Healthy</figcaption><span id="preview-healthy-unavailable" class="help" hidden>No whole percentage in this range</span></figure>
+              <figure><img id="preview-warning" alt="Warning example key" /><figcaption>Warning</figcaption><span id="preview-warning-unavailable" class="help" hidden>No whole percentage in this range</span></figure>
+              <figure><img id="preview-critical" alt="Critical example key" /><figcaption>Critical</figcaption><span id="preview-critical-unavailable" class="help" hidden>No whole percentage in this range</span></figure>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Key appearance</legend>
+            <div class="color-setting"><label for="background-text">Background</label><input id="background-picker" type="color" aria-label="Choose background colour" /><input id="background-text" type="text" aria-label="Background hex colour" maxlength="7" /></div>
+            <div class="color-setting"><label for="text-text">Text</label><input id="text-picker" type="color" aria-label="Choose text colour" /><input id="text-text" type="text" aria-label="Text hex colour" maxlength="7" /></div>
+            <div class="color-setting"><label for="healthy-text">Healthy indicator</label><input id="healthy-picker" type="color" aria-label="Choose healthy indicator colour" /><input id="healthy-text" type="text" aria-label="Healthy indicator hex colour" maxlength="7" /></div>
+            <label class="outline-setting" for="outline-enabled"><span>Button outline</span><input id="outline-enabled" type="checkbox" /></label>
+            <div class="color-setting"><label for="outlineColor-text">Outline colour</label><input id="outlineColor-picker" type="color" aria-label="Choose outline colour" /><input id="outlineColor-text" type="text" aria-label="Outline hex colour" maxlength="7" /></div>
+            <p id="appearance-error" class="error" hidden>Enter a six-digit hex colour, such as #55C7E8.</p>
+            <p class="help">Warning and critical colours remain unchanged. Choose colours with enough contrast to keep the key readable.</p>
+            <button id="reset-appearance" type="button">Reset appearance</button>
           </fieldset>
         </section>
 

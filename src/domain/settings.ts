@@ -1,6 +1,7 @@
 import { normalizeGroupSelection } from "./limit-groups.js";
 
 export type LimitBeaconSettings = {
+  appearance?: Appearance;
   limitGroupId: string;
   window: "automatic" | "primary" | "secondary";
   basis: "remaining" | "used";
@@ -11,6 +12,34 @@ export type LimitBeaconSettings = {
   resetStyle: "countdown" | "local-time";
   codexExecutable: string;
 };
+
+export type Appearance = {
+  background: string;
+  text: string | null;
+  healthy: string;
+  outline: boolean;
+  outlineColor: string;
+};
+
+export const DEFAULT_APPEARANCE: Appearance = {
+  background: "#071827", text: null, healthy: "#55C7E8", outline: false, outlineColor: "#55C7E8",
+};
+
+export function validHexColor(value: unknown): value is string {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/iu.test(value);
+}
+
+export function normalizeAppearance(raw: unknown): Appearance {
+  const value = typeof raw === "object" && raw !== null && !Array.isArray(raw)
+    ? raw as Record<string, unknown> : {};
+  return {
+    background: validHexColor(value.background) ? value.background.toUpperCase() : DEFAULT_APPEARANCE.background,
+    text: validHexColor(value.text) ? value.text.toUpperCase() : null,
+    healthy: validHexColor(value.healthy) ? value.healthy.toUpperCase() : DEFAULT_APPEARANCE.healthy,
+    outline: value.outline === true,
+    outlineColor: validHexColor(value.outlineColor) ? value.outlineColor.toUpperCase() : DEFAULT_APPEARANCE.outlineColor,
+  };
+}
 
 const DEFAULT_SETTINGS: LimitBeaconSettings = {
   limitGroupId: "",
@@ -99,6 +128,7 @@ export function normalizeSettings(raw: unknown): LimitBeaconSettings {
   }
 
   return {
+    ...(Object.hasOwn(settings, "appearance") ? { appearance: normalizeAppearance(settings.appearance) } : {}),
     limitGroupId: normalizeGroupSelection(settings.limitGroupId),
     window,
     basis,
