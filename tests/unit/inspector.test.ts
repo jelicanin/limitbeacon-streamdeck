@@ -257,3 +257,43 @@ test("legacy key settings expose automatic quota selection without changing dial
     assert.equal(setup(action).byId("quota-window-field").hidden, true);
   }
 });
+
+test("appearance persists per key, rejects invalid input, and resets without changing other settings", () => {
+  const host = setup("codex-limits", {basis: "used", appearance: {background: "#123456", healthy: "#abcdef"}});
+  assert.equal(host.byId("background-text").value, "#123456");
+  assert.equal(host.byId("healthy-picker").value, "#ABCDEF");
+  const text = host.byId("background-text");
+  const before = host.sent.length;
+  text.value = "#bad";
+  text.dispatchEvent(new Event("input"));
+  assert.equal(host.sent.length, before);
+  assert.equal(host.byId("appearance-error").hidden, false);
+  text.value = "#010203";
+  text.dispatchEvent(new Event("input"));
+  let payload = host.sent.at(-1)!.payload as {basis: string; appearance: {background: string}};
+  assert.equal(payload.basis, "used");
+  assert.equal(payload.appearance.background, "#010203");
+  host.change("window", "secondary");
+  payload = host.sent.at(-1)!.payload as typeof payload;
+  assert.equal(payload.appearance.background, "#010203");
+  host.byId("reset-appearance").click();
+  const reset = host.sent.at(-1)!.payload as Record<string, unknown>;
+  assert.equal(reset.appearance, undefined);
+  assert.equal(reset.window, "secondary");
+  assert.equal(host.byId("background-text").value, "#071827");
+});
+
+test("appearance tab is excluded from dial and Neo navigation and settings", () => {
+  for (const action of ["limit-browser", "daily-tokens", "credits-spend", "activity-stats", "neo-limits"]) {
+    const host = setup(action);
+    assert.equal(host.byId("appearance-tab").hidden, true);
+    const general = host.byId("general-tab");
+    const event = new Event("keydown", {cancelable: true});
+    Object.defineProperty(event, "key", {value:"ArrowRight"});
+    general.dispatchEvent(event);
+    assert.equal(host.byId("advanced-tab").getAttribute("aria-selected"), "true");
+    const before = host.sent.length;
+    host.byId("reset-appearance").click();
+    assert.equal(host.sent.length, before);
+  }
+});

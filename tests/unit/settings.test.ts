@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { normalizeSettings } from "../../src/domain/settings.js";
+import { DEFAULT_APPEARANCE, normalizeAppearance, normalizeSettings, validHexColor } from "../../src/domain/settings.js";
+
+test("appearance accepts only six-digit hex colours and safely falls back", () => {
+  assert.equal(validHexColor("#a1b2c3"), true);
+  for (const value of ["#fff", "red", "#123456\" onload=\"x", "#12345678", null, 123]) assert.equal(validHexColor(value), false);
+  assert.deepEqual(normalizeAppearance({background: "#a1b2c3", text: "url(x)", healthy: "<script>", outline: "true", outlineColor: "#fff"}),
+    {...DEFAULT_APPEARANCE, background: "#A1B2C3"});
+  assert.deepEqual(normalizeAppearance(null), DEFAULT_APPEARANCE);
+});
 
 const defaults = {
   limitGroupId: "",

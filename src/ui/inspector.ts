@@ -1,4 +1,4 @@
-import { normalizeSettings, type LimitBeaconSettings } from "../domain/settings.js";
+import { normalizeAppearance, normalizeSettings, validHexColor, type Appearance, type LimitBeaconSettings } from "../domain/settings.js";
 import { normalizeDialSettings, type DialSettings } from "../domain/dial-settings.js";
 import { normalizeNeoSettings } from "../domain/neo-settings.js";
 import {
@@ -63,6 +63,8 @@ let isNeoInspector = false;
 let neoSettings = normalizeNeoSettings(undefined);
 let specializedDial: { title: string; detail: string; controls: string } | undefined;
 let dialSettings = normalizeDialSettings(undefined);
+let appearance: Appearance | undefined;
+const colorFields = ["background", "text", "healthy", "outlineColor"] as const;
 
 window.connectElgatoStreamDeckSocket = (port, inspectorId, registerEvent, info, actionInfo) => {
   propertyInspectorId = inspectorId;
@@ -90,7 +92,7 @@ for (const button of tabButtons) {
   button.tabIndex = button.getAttribute("aria-selected") === "true" ? 0 : -1;
   button.addEventListener("click", () => selectTab(button));
   button.addEventListener("keydown", (event) => {
-    const buttons = Array.from(tabButtons);
+    const buttons = Array.from(tabButtons).filter(candidate => !candidate.hidden);
     const index = buttons.indexOf(button);
     const targetIndex = event.key === "ArrowRight" ? (index + 1) % buttons.length
       : event.key === "ArrowLeft" ? (index - 1 + buttons.length) % buttons.length
@@ -104,6 +106,48 @@ for (const button of tabButtons) {
     selectTab(target);
     target.focus();
   });
+}
+
+for (const field of colorFields) {
+  const picker = requiredElement<HTMLInputElement>(`${field}-picker`);
+  const input = requiredElement<HTMLInputElement>(`${field}-text`);
+  const update = (value: string) => {
+    if (!validHexColor(value)) {
+      requiredElement("appearance-error").hidden = false;
+      return;
+    }
+    appearance = { ...normalizeAppearance(appearance), [field]: value.toUpperCase() };
+    syncAppearance();
+    saveAppearance();
+  };
+  picker.addEventListener("input", () => update(picker.value));
+  input.addEventListener("input", () => update(input.value));
+}
+requiredElement<HTMLInputElement>("outline-enabled").addEventListener("change", (event) => {
+  appearance = { ...normalizeAppearance(appearance), outline: (event.target as HTMLInputElement).checked };
+  saveAppearance();
+});
+requiredElement("reset-appearance").addEventListener("click", () => {
+  appearance = undefined;
+  syncAppearance();
+  saveAppearance();
+});
+
+function syncAppearance(): void {
+  const current = normalizeAppearance(appearance);
+  for (const field of colorFields) {
+    const value = current[field] ?? "#A9C0CF";
+    requiredElement<HTMLInputElement>(`${field}-picker`).value = value;
+    requiredElement<HTMLInputElement>(`${field}-text`).value = value;
+  }
+  requiredElement<HTMLInputElement>("outline-enabled").checked = current.outline;
+  requiredElement("appearance-error").hidden = true;
+}
+
+function saveAppearance(): void {
+  if (isDialInspector || isNeoInspector) return;
+  const settings = readForm();
+  if (settings !== null) send({event: "setSettings", action: actionId, context: propertyInspectorId, payload: keySettings(settings)});
 }
 
 connectionTest.addEventListener("click", () => {
@@ -236,6 +280,8 @@ function configureInspector(): void {
 
 function setKeyForm(raw: unknown): void {
   const settings = normalizeSettings(raw);
+  appearance = settings.appearance;
+  syncAppearance();
   selectedGroupId = settings.limitGroupId;
   renderGroupOptions();
   setField("window", settings.window);
@@ -342,6 +388,7 @@ function readActionInfo(raw: string): { id: string; settings: unknown } {
 
 function keySettings(settings: LimitBeaconSettings): object {
   return {
+    ...(appearance === undefined ? {} : { appearance }),
     limitGroupId: settings.limitGroupId,
     window: settings.window,
     basis: settings.basis,

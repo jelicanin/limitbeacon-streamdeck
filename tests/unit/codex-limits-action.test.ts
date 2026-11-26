@@ -151,6 +151,21 @@ test("key display style changes only the selected key", () => {
   assert.match(latestSvg(barKey), /class="meter-fill"/u);
 });
 
+test("appearance changes rerender only the selected key's appearance without fetching", () => {
+  const service = new FakeService();
+  const controller = new CodexLimitsController(service);
+  const first = new FakeKey("first");
+  const second = new FakeKey("second");
+  controller.appear(first, {});
+  controller.appear(second, {});
+  controller.keySettingsChanged(first.id, {appearance: {background: "#123456"}});
+  assert.match(latestSvg(first), /fill="#123456"/u);
+  assert.match(latestSvg(second), /fill="#071827"/u);
+  assert.equal(service.refreshCount, 0);
+  controller.keySettingsChanged(first.id, {});
+  assert.match(latestSvg(first), /fill="#071827"/u);
+});
+
 test("two keys keep independent display settings", () => {
   const service = new FakeService();
   const controller = new CodexLimitsController(service);
