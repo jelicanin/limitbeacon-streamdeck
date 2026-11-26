@@ -53,7 +53,7 @@ function renderUsage(model: UsageKeyViewModel, appearance: Appearance): string {
   const row = renderSingleRow(model.window, basis, appearance);
 
   return svg(withGroupLabel(`
-    ${model.stale ? '<text x="132" y="15" class="stale">STALE</text>' : ""}
+    ${model.stale ? '<text x="72" y="114" class="stale">STALE</text>' : ""}
     ${row}
   `, model.groupLabel), appearance);
 }
@@ -63,7 +63,7 @@ function renderRingUsage(model: UsageKeyViewModel, appearance: Appearance): stri
   const ring = renderSingleRing(model.window, basis, appearance);
 
   return svg(withGroupLabel(`
-    ${model.stale ? '<text x="132" y="15" class="stale">STALE</text>' : ""}
+    ${model.stale ? '<text x="72" y="114" class="stale">STALE</text>' : ""}
     ${ring}
   `, model.groupLabel), appearance);
 }
@@ -122,7 +122,7 @@ function svg(content: string, appearance: Appearance): string {
   ${appearance.outline ? `<rect x="2" y="2" width="140" height="140" rx="16" fill="none" stroke="${appearance.outlineColor}" stroke-width="4"/>` : ""}
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    .stale { fill: #F2B84B; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-anchor: end; }
+    .stale { fill: #F2B84B; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-anchor: middle; }
     .signal { font-size: 13px; font-weight: 800; baseline-shift: 1px; }
     .meter-track { fill: #233743; }
     .single-label { fill: #A9C0CF; font-size: 18px; font-weight: 700; text-anchor: middle; }

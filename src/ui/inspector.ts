@@ -64,6 +64,8 @@ let neoSettings = normalizeNeoSettings(undefined);
 let specializedDial: { title: string; detail: string; controls: string } | undefined;
 let dialSettings = normalizeDialSettings(undefined);
 let appearance: Appearance | undefined;
+let lastValidKeySettings = normalizeSettings(undefined);
+let keyEditedLocally = false;
 const colorFields = ["background", "text", "healthy", "outlineColor"] as const;
 
 window.connectElgatoStreamDeckSocket = (port, inspectorId, registerEvent, info, actionInfo) => {
@@ -146,8 +148,8 @@ function syncAppearance(): void {
 
 function saveAppearance(): void {
   if (isDialInspector || isNeoInspector) return;
-  const settings = readForm();
-  if (settings !== null) send({event: "setSettings", action: actionId, context: propertyInspectorId, payload: keySettings(settings)});
+  keyEditedLocally = true;
+  send({event: "setSettings", action: actionId, context: propertyInspectorId, payload: keySettings(lastValidKeySettings)});
 }
 
 connectionTest.addEventListener("click", () => {
@@ -186,6 +188,8 @@ form.addEventListener("change", (event) => {
   const settings = readForm();
   if (settings === null) return;
   if (!isDialInspector && !isNeoInspector && keySettingNames.has(name)) {
+    lastValidKeySettings = settings;
+    keyEditedLocally = true;
     send({
       event: "setSettings",
       action: actionId,
@@ -210,7 +214,7 @@ function receive(raw: unknown): void {
     if (message.event === "didReceiveSettings") {
       if (isNeoInspector) setNeoForm(payload.settings);
       else if (isBrowserDialInspector) setDialForm(payload.settings);
-      else if (specializedDial === undefined) setKeyForm(payload.settings);
+      else if (specializedDial === undefined && !keyEditedLocally) setKeyForm(payload.settings);
     }
     if (message.event === "didReceiveGlobalSettings") setGlobalForm(payload.settings);
     if (message.event === "sendToPropertyInspector" && isStatus(payload.status)) {
@@ -280,6 +284,7 @@ function configureInspector(): void {
 
 function setKeyForm(raw: unknown): void {
   const settings = normalizeSettings(raw);
+  lastValidKeySettings = settings;
   appearance = settings.appearance;
   syncAppearance();
   selectedGroupId = settings.limitGroupId;

@@ -12,7 +12,6 @@ body { margin: 0; background: #2d2d2d; }
 main { width: 100%; max-width: 100%; padding: 10px 12px 12px; }
 
 .tabs {
-  display: grid;
   display: flex;
   gap: 3px;
   padding: 3px;

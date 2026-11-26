@@ -104,6 +104,9 @@ function setup(actionName = "codex-limits", settings: object = {}) {
     receive(payload: unknown) {
       socket.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({event: "sendToPropertyInspector", payload}) }));
     },
+    receiveSettings(settings: unknown) {
+      socket.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({event: "didReceiveSettings", payload: {settings}}) }));
+    },
   };
 }
 
@@ -150,6 +153,67 @@ test("tabs support roving focus, arrows with wrapping, Home and End", () => {
   advanced.click();
   assert.equal(advanced.tabIndex, 0);
   assert.equal(host.byId("advanced-panel").hidden, false);
+});
+
+test("appearance saves and resets using last valid key settings despite invalid unrelated fields", () => {
+  const host = setup("codex-limits", {window:"secondary", warningThreshold:40, criticalThreshold:20, basis:"used"});
+  host.change("warningThreshold", "10");
+  host.change("refreshMinutes", "0");
+  const input = host.byId("background-text");
+  input.value = "#123456";
+  input.dispatchEvent(new Event("input"));
+  const saved = host.sent.at(-1)!.payload as Record<string, unknown>;
+  assert.equal(saved.warningThreshold, 40);
+  assert.equal(saved.criticalThreshold, 20);
+  assert.equal(saved.window, "secondary");
+  assert.equal(saved.basis, "used");
+  assert.equal((saved.appearance as {background:string}).background, "#123456");
+  host.byId("reset-appearance").click();
+  const reset = host.sent.at(-1)!.payload as Record<string, unknown>;
+  assert.equal(reset.appearance, undefined);
+  assert.equal(reset.warningThreshold, 40);
+  assert.equal(reset.window, "secondary");
+  assert.equal(host.byId("threshold-error").hidden, false);
+});
+
+test("rapid changes and reset survive delayed host settings responses", () => {
+  const host = setup("codex-limits", {basis:"used", warningThreshold:40, criticalThreshold:20});
+  const input = host.byId("background-picker");
+  input.value = "#112233";
+  input.dispatchEvent(new Event("input"));
+  const first = host.sent.at(-1)!.payload;
+  input.value = "#445566";
+  input.dispatchEvent(new Event("input"));
+  const second = host.sent.at(-1)!.payload;
+  host.receiveSettings(first);
+  assert.equal(host.byId("background-text").value, "#445566");
+  host.change("window", "secondary");
+  assert.equal(((host.sent.at(-1)!.payload as {appearance:{background:string}}).appearance).background, "#445566");
+  host.byId("reset-appearance").click();
+  host.receiveSettings(second);
+  assert.equal(host.byId("background-text").value, "#071827");
+  host.change("basis", "remaining");
+  const final = host.sent.at(-1)!.payload as Record<string, unknown>;
+  assert.equal(final.appearance, undefined);
+  assert.equal(final.window, "secondary");
+});
+
+test("host settings hydrate before edits and the final rapid write survives inspector reopening", () => {
+  const host = setup("codex-limits", {});
+  host.receiveSettings({window:"secondary", appearance:{background:"#101010"}});
+  assert.equal(host.byId("background-text").value, "#101010");
+  const picker = host.byId("background-picker");
+  for (const value of ["#223344", "#556677", "#8899AA"]) {
+    picker.value = value;
+    picker.dispatchEvent(new Event("input"));
+  }
+  const writes = host.sent.filter(message => message.event === "setSettings");
+  const persisted = writes.at(-1)!.payload as Record<string, unknown>;
+  host.receiveSettings(writes[0]!.payload);
+  assert.equal(host.byId("background-text").value, "#8899AA");
+  const reopened = setup("codex-limits", persisted);
+  assert.equal(reopened.byId("background-text").value, "#8899AA");
+  assert.equal(reopened.byId("quota-window").value, "secondary");
 });
 
 for (const action of ["codex-limits", "limit-browser", "daily-tokens", "credits-spend", "activity-stats", "neo-limits"]) {
