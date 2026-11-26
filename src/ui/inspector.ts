@@ -1,6 +1,7 @@
 import { normalizeAppearance, normalizeSettings, validHexColor, type Appearance, type LimitBeaconSettings } from "../domain/settings.js";
 import { normalizeDialSettings, type DialSettings } from "../domain/dial-settings.js";
 import { normalizeNeoSettings } from "../domain/neo-settings.js";
+import { renderKey, type Severity } from "../render/key-renderer.js";
 import {
   inspectorStatusModel,
   staleDetail,
@@ -144,10 +145,12 @@ function syncAppearance(): void {
   }
   requiredElement<HTMLInputElement>("outline-enabled").checked = current.outline;
   requiredElement("appearance-error").hidden = true;
+  renderAppearancePreviews();
 }
 
 function saveAppearance(): void {
   if (isDialInspector || isNeoInspector) return;
+  renderAppearancePreviews();
   keyEditedLocally = true;
   send({event: "setSettings", action: actionId, context: propertyInspectorId, payload: keySettings(lastValidKeySettings)});
 }
@@ -168,6 +171,7 @@ form.addEventListener("change", (event) => {
   const name = event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement
     ? event.target.name
     : "";
+  if (!isDialInspector && !isNeoInspector && keySettingNames.has(name)) renderAppearancePreviews();
   if (name === "limitGroupId") selectedGroupId = groupSelect.value;
   if (isNeoInspector && (name === "limitGroupId" || name === "window")) {
     neoSettings = normalizeNeoSettings({limitGroupId:selectedGroupId,
@@ -295,6 +299,35 @@ function setKeyForm(raw: unknown): void {
   setField("resetStyle", settings.resetStyle);
   setField("warningThreshold", settings.warningThreshold);
   setField("criticalThreshold", settings.criticalThreshold);
+  renderAppearancePreviews();
+}
+
+function renderAppearancePreviews(): void {
+  if (isDialInspector || isNeoInspector) return;
+  const data = new FormData(form);
+  const warning = Number(data.get("warningThreshold"));
+  const critical = Number(data.get("criticalThreshold"));
+  const validThresholds = data.get("warningThreshold") !== "" && data.get("criticalThreshold") !== ""
+    && Number.isFinite(warning) && Number.isFinite(critical)
+    && critical >= 0 && warning <= 100 && critical <= warning;
+  const w = validThresholds ? warning : lastValidKeySettings.warningThreshold;
+  const c = validThresholds ? critical : lastValidKeySettings.criticalThreshold;
+  const style = data.get("displayStyle") === "rings" ? "rings" : "bars";
+  const basis = data.get("basis") === "used" ? "used" : "remaining";
+  const examples: [Severity, number | null][] = [
+    ["healthy", w < 100 ? Math.ceil((w + 100) / 2) : null],
+    ["warning", Math.floor(w) > c ? Math.floor((Math.floor(w) + c + 1) / 2) : null],
+    ["critical", Math.floor(c / 2)],
+  ];
+  for (const [severity, remaining] of examples) {
+    const image = requiredElement<HTMLImageElement>(`preview-${severity}`);
+    image.hidden = remaining === null;
+    requiredElement(`preview-${severity}-unavailable`).hidden = remaining !== null;
+    if (remaining === null) continue;
+    const svg = renderKey({type: "usage", basis, displayStyle: style, stale: false,
+      window: {label: "5H", percent: basis === "used" ? 100 - remaining : remaining, reset: "2h 14m", severity}}, appearance);
+    image.setAttribute("src", `data:image/svg+xml,${encodeURIComponent(svg)}`);
+  }
 }
 
 function setGlobalForm(raw: unknown): void {

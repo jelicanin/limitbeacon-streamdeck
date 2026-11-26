@@ -92,6 +92,15 @@
 
         <section id="appearance-panel" class="tab-panel" role="tabpanel" aria-labelledby="appearance-tab" hidden>
           <fieldset>
+            <legend>Appearance examples</legend>
+            <p class="help">Simulated usage; not your live Codex data.</p>
+            <div class="appearance-previews">
+              <figure><img id="preview-healthy" alt="Healthy example key" /><figcaption>Healthy</figcaption><span id="preview-healthy-unavailable" class="help" hidden>No whole percentage in this range</span></figure>
+              <figure><img id="preview-warning" alt="Warning example key" /><figcaption>Warning</figcaption><span id="preview-warning-unavailable" class="help" hidden>No whole percentage in this range</span></figure>
+              <figure><img id="preview-critical" alt="Critical example key" /><figcaption>Critical</figcaption><span id="preview-critical-unavailable" class="help" hidden>No whole percentage in this range</span></figure>
+            </div>
+          </fieldset>
+          <fieldset>
             <legend>Key appearance</legend>
             <div class="color-setting"><label for="background-text">Background</label><input id="background-picker" type="color" aria-label="Choose background colour" /><input id="background-text" type="text" aria-label="Background hex colour" maxlength="7" /></div>
             <div class="color-setting"><label for="text-text">Text</label><input id="text-picker" type="color" aria-label="Choose text colour" /><input id="text-text" type="text" aria-label="Text hex colour" maxlength="7" /></div>

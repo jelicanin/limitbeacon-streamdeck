@@ -98,7 +98,7 @@ function setup(actionName = "codex-limits", settings: object = {}) {
       const input = form.elements.namedItem(name) as Element;
       input.value = value;
       const event = new Event("change");
-      Object.defineProperty(event, "target", {value: input});
+      Object.defineProperty(event, "target", {value: input instanceof RadioList ? nodes.find(node => node.name === name) : input});
       form.dispatchEvent(event);
     },
     receive(payload: unknown) {
@@ -360,4 +360,48 @@ test("appearance tab is excluded from dial and Neo navigation and settings", () 
     host.byId("reset-appearance").click();
     assert.equal(host.sent.length, before);
   }
+});
+
+test("appearance examples render the selected style, basis, thresholds and colours without a refresh", () => {
+  const host = setup("codex-limits", {displayStyle:"rings", basis:"used", warningThreshold:40, criticalThreshold:20});
+  const svg = (name: string) => decodeURIComponent(host.byId(`preview-${name}`).getAttribute("src")!.split(",")[1]!);
+  assert.match(svg("healthy"), /class="ring-fill"/u);
+  assert.match(svg("healthy"), />30%</u);
+  assert.match(svg("warning"), />70%</u);
+  assert.match(svg("warning"), /stroke="#F2B84B"/u);
+  assert.match(svg("critical"), />90%</u);
+  assert.match(svg("critical"), /stroke="#FF6B6B"/u);
+  const before = host.sent.length;
+  const background = host.byId("background-text");
+  background.value = "#112233";
+  background.dispatchEvent(new Event("input"));
+  assert.match(svg("healthy"), /fill="#112233"/u);
+  assert.match(svg("warning"), /fill="#112233"/u);
+  const healthy = host.byId("healthy-picker");
+  healthy.value = "#00AA77";
+  healthy.dispatchEvent(new Event("input"));
+  assert.match(svg("healthy"), /stroke="#00AA77"/u);
+  assert.match(svg("warning"), /stroke="#F2B84B"/u);
+  const outline = host.byId("outline-enabled") as Element & {checked: boolean};
+  outline.checked = true;
+  outline.dispatchEvent(new Event("change"));
+  assert.match(svg("critical"), /stroke="#55C7E8" stroke-width="4"/u);
+  assert.equal(host.sent.slice(before).some(message => message.event === "sendToPlugin"), false);
+  host.change("displayStyle", "bars");
+  assert.match(svg("healthy"), /class="meter-fill"/u);
+  host.change("warningThreshold", "60");
+  assert.match(svg("warning"), />60%</u);
+  host.byId("reset-appearance").click();
+  assert.match(svg("healthy"), /fill="#071827"/u);
+});
+
+test("unreachable example ranges are explicitly labelled", () => {
+  const host = setup("codex-limits", {warningThreshold:100, criticalThreshold:100});
+  assert.equal(host.byId("preview-healthy").hidden, true);
+  assert.equal(host.byId("preview-warning").hidden, true);
+  assert.equal(host.byId("preview-healthy-unavailable").hidden, false);
+  assert.equal(host.byId("preview-critical").hidden, false);
+  host.change("criticalThreshold", "15");
+  assert.equal(host.byId("preview-warning").hidden, false);
+  assert.equal(host.byId("preview-healthy").hidden, true);
 });
