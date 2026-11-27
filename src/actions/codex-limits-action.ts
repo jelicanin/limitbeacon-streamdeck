@@ -169,7 +169,7 @@ function toViewModel(
       : settings.window === "secondary" ? state.snapshot.weekly
       : state.snapshot.fiveHour ?? state.snapshot.weekly;
     if (selected === null) {
-      return { type: "message", tone: "setup", title: settings.window === "automatic" ? "Usage unavailable" : "Window unavailable", hint: "Choose a window" };
+      return { type: "message", tone: "setup", title: settings.window === "automatic" ? "Usage unavailable" : "Allowance unavailable", hint: "Choose an allowance" };
     }
     return {
       type: "usage",
@@ -177,7 +177,7 @@ function toViewModel(
       displayStyle: settings.displayStyle,
       stale: state.status === "stale" || state.snapshot.stale,
       ...(showGroupLabel(state, settings.limitGroupId) ? { groupLabel: state.groupLabel! } : {}),
-      window: windowViewModel(selected, settings),
+      window: windowViewModel(selected, settings, selected === state.snapshot.fiveHour ? "Primary allowance" : "Secondary allowance"),
     };
   }
 
@@ -211,17 +211,18 @@ function windowViewModel(
     resetsAt: number | null;
   },
   settings: LimitBeaconSettings,
+  fallback: string,
 ): { label: string; percent: number; reset: string | null; severity: Severity } {
   return {
-    label: formatWindowDuration(window.durationMinutes),
+    label: formatWindowDuration(window.durationMinutes, fallback),
     percent: settings.basis === "remaining" ? window.remainingPercent : window.usedPercent,
     reset: formatReset(window.resetsAt, settings.resetStyle),
     severity: severity(window.remainingPercent, settings),
   };
 }
 
-function formatWindowDuration(minutes: number | null): string {
-  if (minutes === null) return "LIMIT";
+function formatWindowDuration(minutes: number | null, fallback: string): string {
+  if (minutes === null) return fallback;
   if (minutes % 1_440 === 0) return `${minutes / 1_440}D`;
   if (minutes % 60 === 0) return `${minutes / 60}H`;
   return `${minutes}M`;

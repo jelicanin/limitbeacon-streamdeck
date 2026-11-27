@@ -34,9 +34,9 @@ Press a key for an immediate refresh. Automatic updates, connection management, 
 
 ## Choose your view
 
-Use the compact horizontal meter or switch any key to a circular gauge. Each key shows one usage window with one progress indicator. In **General → Quota window**, choose **First available**, **Primary window**, or **Secondary window**. Add another key to display another window at the same time. Each key keeps its own display preference, remaining or used basis, and reset-time format.
+Use the compact horizontal meter or switch any key to a circular gauge. Each key shows one usage allowance with one progress indicator. In **General → Usage allowance**, choose **Automatic** or an allowance labeled with its duration (such as **5-hour allowance**). When duration data is unavailable, the options use **Primary allowance** and **Secondary allowance**. Add another key to display another allowance at the same time. Each key keeps its own display preference, remaining or used basis, and reset-time format.
 
-When upgrading to 1.3.0, existing keys use **First available** until you select a window. An explicitly selected missing window shows **Window unavailable** rather than switching to another quota.
+When upgrading to 1.3.0, existing keys use **Automatic** until you select an allowance. An explicitly selected missing allowance shows **Allowance unavailable** rather than switching to another quota.
 
 ![LimitBeacon offers horizontal meters and circular gauges](docs/assets/limitbeacon-views.png)
 
@@ -83,7 +83,7 @@ Daily Tokens and Activity Stats remain account-wide. Credits & Spend continues t
 
 ## Neo Infobar
 
-**Neo Limits** adds a display-only 232 × 50 Infobar view with the selected group, remaining quota, actual window duration, reset countdown, and stale or unavailable state. In its inspector, choose **First available**, **Primary window**, or **Secondary window**. An explicitly selected missing window stays unavailable; it never silently switches to a different quota.
+**Neo Limits** adds a display-only 232 × 50 Infobar view with the selected group, remaining quota, actual allowance duration, reset countdown, and stale or unavailable state. In its inspector, choose **Automatic** or an allowance labeled with its duration (such as **5-hour allowance**). When duration data is unavailable, the options use **Primary allowance** and **Secondary allowance**. An explicitly selected missing allowance stays unavailable; it never silently switches to a different quota.
 
 The Neo Infobar action is display-only. Use **General → Refresh now** or **Advanced → Test connection** to refresh manually. Existing keys and dials retain their display preferences and action identifiers.
 

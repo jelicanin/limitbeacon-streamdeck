@@ -28,7 +28,9 @@ const lastSuccess = requiredElement("last-success");
 const connectionTest = requiredElement<HTMLButtonElement>("test-connection");
 const groupSelect = requiredElement<HTMLSelectElement>("limit-group");
 let selectedGroupId = "";
-let groupOptions: { id: string; label: string; available: boolean }[] = [];
+type GroupOption = { id: string; label: string; available: boolean; primaryMinutes: number | null; secondaryMinutes: number | null };
+let groupOptions: GroupOption[] = [];
+let defaultGroupId: string | null = null;
 let groupsReceived = false;
 const thresholdError = requiredElement("threshold-error");
 const tabButtons = document.querySelectorAll<HTMLButtonElement>("[role=tab]");
@@ -122,7 +124,10 @@ form.addEventListener("change", (event) => {
   const name = event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement
     ? event.target.name
     : "";
-  if (name === "limitGroupId") selectedGroupId = groupSelect.value;
+  if (name === "limitGroupId") {
+    selectedGroupId = groupSelect.value;
+    renderAllowanceOptions();
+  }
   if (isNeoInspector && (name === "limitGroupId" || name === "window")) {
     neoSettings = normalizeNeoSettings({limitGroupId:selectedGroupId,
       window:requiredElement<HTMLSelectElement>("quota-window").value});
@@ -171,9 +176,10 @@ function receive(raw: unknown): void {
     if (message.event === "didReceiveGlobalSettings") setGlobalForm(payload.settings);
     if (message.event === "sendToPropertyInspector" && isStatus(payload.status)) {
       if (Array.isArray(payload.limitGroups)) {
-        groupOptions = payload.limitGroups.filter((group): group is {id: string; label: string; available: boolean} =>
+        groupOptions = payload.limitGroups.filter((group): group is GroupOption =>
           isRecord(group) && typeof group.id === "string" && group.id.length > 0 && group.id.length <= 256
           && typeof group.label === "string" && group.label.length <= 80 && typeof group.available === "boolean");
+        defaultGroupId = typeof payload.defaultGroupId === "string" ? payload.defaultGroupId : null;
         groupsReceived = true;
         renderGroupOptions();
       }
@@ -214,7 +220,7 @@ function configureInspector(): void {
   }
   const guideContent = isNeoInspector ? {
     title:"Neo Limits", detail:"Show a limit group's remaining quota, reset countdown, and connection state.",
-    controls:"Neo Infobar is display-only. Choose its group and window here; use Refresh now to retry.",
+    controls:"Neo Infobar is display-only. Choose its group and allowance here; use Refresh now to retry.",
   } : specializedDial;
   requiredElement("quota-window-field").hidden = isDialInspector;
   if (guideContent !== undefined) {
@@ -411,4 +417,27 @@ function renderGroupOptions(): void {
     add(selectedGroupId, groupsReceived ? "Selected group (unavailable)" : "Selected group");
   }
   groupSelect.value = selectedGroupId;
+  renderAllowanceOptions();
+}
+
+function renderAllowanceOptions(): void {
+  const select = requiredElement<HTMLSelectElement>("quota-window");
+  const selected = select.value || "automatic";
+  const group = groupOptions.find(item => item.id === (selectedGroupId || defaultGroupId));
+  const label = (minutes: unknown, fallback: string): string => {
+    if (typeof minutes !== "number" || !Number.isFinite(minutes) || minutes <= 0) return fallback;
+    if (minutes % 1440 === 0) return `${minutes / 1440}-day allowance`;
+    if (minutes % 60 === 0) return `${minutes / 60}-hour allowance`;
+    return `${minutes}-minute allowance`;
+  };
+  select.replaceChildren();
+  for (const [value, text] of [["automatic", "Automatic"],
+    ["primary", label(group?.primaryMinutes, "Primary allowance")],
+    ["secondary", label(group?.secondaryMinutes, "Secondary allowance")]]) {
+    const option = document.createElement("option");
+    option.value = value!;
+    option.textContent = text!;
+    select.append(option);
+  }
+  select.value = selected;
 }

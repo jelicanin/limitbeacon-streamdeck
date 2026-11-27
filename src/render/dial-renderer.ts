@@ -111,7 +111,7 @@ function renderRing(active: DialUsageRow, color: string, basis: string): string 
   return `
     <circle cx="55" cy="49" r="27" class="dial-ring-track"/>
     <circle cx="55" cy="49" r="27" class="dial-ring-fill" stroke="${color}" stroke-dasharray="${ringDash(active.percent, 27)} 999" transform="rotate(-90 55 49)"/>
-    <text x="94" y="24" class="limit-label">${escapeXml(active.label)} · ${basis}</text>
+    <text x="94" y="24" class="limit-label"${active.label.length > 10 ? ' textLength="82" lengthAdjust="spacingAndGlyphs"' : ""}>${escapeXml(active.label)} · ${basis}</text>
     <text x="94" y="57" class="limit-value" fill="${color}">${formatPercent(active.percent)}</text>
     <text x="94" y="83" class="reset">RESET ${escapeXml(active.reset ?? "unavailable")}</text>
   `;
@@ -119,7 +119,7 @@ function renderRing(active: DialUsageRow, color: string, basis: string): string 
 
 function renderMeter(active: DialUsageRow, color: string, basis: string): string {
   return `
-    <text x="100" y="22" class="meter-label">${escapeXml(active.label)} · ${basis}</text>
+    <text x="100" y="22" class="meter-label"${active.label.length > 10 ? ' textLength="150" lengthAdjust="spacingAndGlyphs"' : ""}>${escapeXml(active.label)} · ${basis}</text>
     <text x="100" y="54" class="meter-value" fill="${color}">${formatPercent(active.percent)}</text>
     <rect x="48" y="61" width="104" height="7" rx="3.5" class="dial-meter-track"/>
     <rect x="48" y="61" width="${meterWidth(active.percent, 104)}" height="7" rx="3.5" class="dial-meter-fill" fill="${color}"/>

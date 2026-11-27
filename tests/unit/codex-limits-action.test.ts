@@ -295,7 +295,7 @@ for (const window of ["primary", "secondary"] as const) {
     const automatic = new FakeKey("automatic");
     controller.appear(selected, {window});
     controller.appear(automatic, {});
-    assert.match(latestSvg(selected), />Window unavailable</u);
+    assert.match(latestSvg(selected), />Allowance unavailable</u);
     assert.doesNotMatch(latestSvg(selected), />\d+%</u);
     assert.match(latestSvg(automatic), />80%</u);
     assert.equal(latestSvg(automatic).match(/class="meter-fill"/gu)?.length, 1);
@@ -325,8 +325,8 @@ test("window selection is independent per key and rerenders cached group data", 
     codex: {primary: {usedPercent: 10}}, research: {primary: {usedPercent: 20}},
   }})};
   service.rerender();
-  assert.match(latestSvg(first), />Window unavailable</u);
-  assert.match(latestSvg(second), />Window unavailable</u);
+  assert.match(latestSvg(first), />Allowance unavailable</u);
+  assert.match(latestSvg(second), />Allowance unavailable</u);
 });
 
 for (const ordinaryUsageAllowed of [false, true, null]) {
