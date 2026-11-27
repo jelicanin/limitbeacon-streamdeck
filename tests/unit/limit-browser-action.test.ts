@@ -303,9 +303,9 @@ test("unknown duration never becomes a five-hour or weekly duration", async () =
   const controller = new LimitBrowserController(service);
   const dial = new FakeDial("unknown");
   controller.appear(dial, {});
-  assert.match(latestSvg(dial), />PRIMARY · LEFT</u);
+  assert.match(latestSvg(dial), />Primary allowance · LEFT</u);
   await controller.rotate(dial.id, 1);
-  assert.match(latestSvg(dial), />SECONDARY · LEFT</u);
+  assert.match(latestSvg(dial), />Secondary allowance · LEFT</u);
   assert.doesNotMatch(latestSvg(dial), />5H|>7D/u);
 });
 

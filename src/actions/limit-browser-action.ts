@@ -299,10 +299,10 @@ function toViewModel(state: UsageServiceState, settings: DialSettings): DialView
       return { type: "message", tone: "error", title: "Usage blocked" };
     }
     const windows = [
-      ...(state.snapshot.fiveHour === null ? [] : [windowViewModel("PRIMARY", state.snapshot.fiveHour, settings.basis)]),
+      ...(state.snapshot.fiveHour === null ? [] : [windowViewModel("Primary allowance", state.snapshot.fiveHour, settings.basis)]),
       ...(state.snapshot.weekly === null
         ? []
-        : [windowViewModel("SECONDARY", state.snapshot.weekly, settings.basis)]),
+        : [windowViewModel("Secondary allowance", state.snapshot.weekly, settings.basis)]),
     ];
     if (windows.length === 0) return { type: "message", tone: "setup", title: "Usage unavailable" };
     return {

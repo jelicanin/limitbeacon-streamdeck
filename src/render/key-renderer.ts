@@ -75,7 +75,7 @@ function withGroupLabel(content: string, label: string | undefined): string {
 function renderSingleRing(row: UsageRow, basis: string): string {
   const color = colors[row.severity];
   return `
-    <text x="72" y="17" class="single-ring-label">${escapeXml(row.label)} · ${basis}</text>
+    <text x="72" y="17" class="single-ring-label"${row.label.length > 10 ? ' textLength="130" lengthAdjust="spacingAndGlyphs"' : ""}>${escapeXml(row.label)} · ${basis}</text>
     <circle cx="72" cy="67" r="38" class="ring-track"/>
     <circle cx="72" cy="67" r="38" class="ring-fill" stroke="${color}" stroke-dasharray="${ringDash(row.percent, 38)} 999" transform="rotate(-90 72 67)"/>
     <text x="72" y="77" class="single-ring-value" fill="${color}">${formatPercent(row.percent)}</text>
@@ -86,7 +86,7 @@ function renderSingleRing(row: UsageRow, basis: string): string {
 function renderSingleRow(row: UsageRow, basis: string): string {
   const color = colors[row.severity];
   return `
-    <text x="72" y="24" class="single-label">${escapeXml(row.label)} <tspan class="signal" fill="${color}">●</tspan> ${basis}</text>
+    <text x="72" y="24" class="single-label"${row.label.length > 10 ? ' textLength="130" lengthAdjust="spacingAndGlyphs"' : ""}>${escapeXml(row.label)} <tspan class="signal" fill="${color}">●</tspan> ${basis}</text>
     <text x="72" y="82" class="single-value" fill="${color}">${formatPercent(row.percent)}</text>
     <rect x="12" y="93" width="120" height="6" rx="3" class="meter-track"/>
     <rect x="12" y="93" width="${meterWidth(row.percent)}" height="6" rx="3" class="meter-fill" fill="${color}"/>
@@ -108,8 +108,8 @@ function renderMessage(model: MessageKeyViewModel): string {
   return svg(`
     <circle cx="72" cy="43" r="17" fill="#102A41" stroke="${color}" stroke-width="3"/>
     <text x="72" y="50" class="message-symbol" fill="${color}">${symbol}</text>
-    <text x="72" y="82" class="message-title">${escapeXml(model.title)}</text>
-    <text x="72" y="105" class="message-hint">${escapeXml(model.hint)}</text>
+    <text x="72" y="82" class="message-title"${model.title.length > 16 ? ' textLength="132" lengthAdjust="spacingAndGlyphs"' : ""}>${escapeXml(model.title)}</text>
+    <text x="72" y="105" class="message-hint"${model.hint.length > 18 ? ' textLength="132" lengthAdjust="spacingAndGlyphs"' : ""}>${escapeXml(model.hint)}</text>
   `);
 }
 

@@ -38,14 +38,14 @@ export function renderNeo(
         ? state.snapshot.fiveHour
         : (state.snapshot.fiveHour ?? state.snapshot.weekly);
   if (window === null)
-    return message("Window unavailable", "Choose a window in settings");
+    return message("Allowance unavailable", "Choose an allowance in settings");
   const remaining = window.remainingPercent;
   const color =
     remaining <= 15 ? "#FF6B6B" : remaining <= 35 ? "#F2B84B" : "#55C7E8";
   const minutes = window.durationMinutes;
   const duration =
     minutes === null
-      ? "LIMIT"
+      ? (window === state.snapshot.fiveHour ? "Primary allowance" : "Secondary allowance")
       : minutes % 1440 === 0
         ? `${minutes / 1440}D`
         : minutes % 60 === 0
@@ -57,7 +57,7 @@ export function renderNeo(
       : `RESET ${countdown(window.resetsAt, now)}`;
   return canvas(`
     <text x="8" y="13" font-size="10" fill="#ADC5D8">${escapeXml(shorten(state.groupLabel ?? "Codex", 16))}</text>
-    <text x="8" y="30" font-size="12" fill="#E9F3F8">${escapeXml(shorten(duration, 12))} LEFT</text>
+    <text x="8" y="30" font-size="12" fill="#E9F3F8"${duration.length > 12 ? ' textLength="145" lengthAdjust="spacingAndGlyphs"' : ""}>${escapeXml(duration)} LEFT</text>
     <text x="8" y="44" font-size="10" fill="#ADC5D8">${escapeXml(shorten(reset, 23))}</text>
     <text x="224" y="33" text-anchor="end" font-size="23" font-weight="700" fill="${color}">${Math.round(remaining)}%</text>
     ${state.snapshot.stale || state.status === "stale" ? '<text x="224" y="12" text-anchor="end" font-size="9" fill="#F2B84B">STALE</text>' : ""}

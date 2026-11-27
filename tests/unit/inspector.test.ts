@@ -257,3 +257,27 @@ test("legacy key settings expose automatic quota selection without changing dial
     assert.equal(setup(action).byId("quota-window-field").hidden, true);
   }
 });
+
+
+for (const action of ["codex-limits", "neo-limits"]) {
+  test(`${action} updates allowance durations for each group without changing the selection`, () => {
+    const host = setup(action, {window: "secondary"});
+    const options = () => host.byId("quota-window").children.map(option => option.textContent);
+    host.receive({status: "connected", defaultGroupId: "a", limitGroups: [
+      {id: "a", label: "A", available: true, primaryMinutes: 10080, secondaryMinutes: 300},
+      {id: "b", label: "B", available: true, primaryMinutes: 90, secondaryMinutes: null},
+    ]});
+    assert.deepEqual(options(), ["Automatic", "7-day allowance", "5-hour allowance"]);
+    assert.equal(host.byId("quota-window").value, "secondary");
+    host.change("limitGroupId", "b");
+    assert.deepEqual(options(), ["Automatic", "90-minute allowance", "Secondary allowance"]);
+    assert.equal(host.byId("quota-window").value, "secondary");
+    host.receive({status: "connected", defaultGroupId: "a", limitGroups: [
+      {id: "b", label: "B", available: true, primaryMinutes: null, secondaryMinutes: 1440},
+    ]});
+    assert.deepEqual(options(), ["Automatic", "Primary allowance", "1-day allowance"]);
+    host.receive({status: "group-unavailable", defaultGroupId: null, limitGroups: []});
+    assert.deepEqual(options(), ["Automatic", "Primary allowance", "Secondary allowance"]);
+    assert.equal(host.byId("quota-window").value, "secondary");
+  });
+}

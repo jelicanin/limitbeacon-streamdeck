@@ -13,7 +13,8 @@ export type InspectorPayload = {
   status: InspectorStatusId;
   lastSuccessAt: number | null;
   staleReason?: StaleReason;
-  limitGroups?: { id: string; label: string; available: boolean }[];
+  limitGroups?: { id: string; label: string; available: boolean; primaryMinutes: number | null; secondaryMinutes: number | null }[];
+  defaultGroupId?: string | null;
 };
 export type InspectorSender = (payload: InspectorPayload) => Promise<void>;
 type Subscribe = (subscriber: (state: InspectorState) => void) => () => void;
@@ -55,7 +56,9 @@ export function inspectorConnectionPayload(state: InspectorState): InspectorPayl
     ...(state.status === "stale" ? { staleReason: staleReason(state.error) } : {}),
     ...(state.collection === undefined ? {} : { limitGroups: state.collection.groups.map(group => ({
       id: group.id, label: group.label, available: group.snapshot !== null,
-    })) }),
+      primaryMinutes: group.snapshot?.fiveHour?.durationMinutes ?? null,
+      secondaryMinutes: group.snapshot?.weekly?.durationMinutes ?? null,
+    })), defaultGroupId: state.collection.defaultGroupId }),
   };
 }
 

@@ -65,7 +65,7 @@ test("Neo explicit window selection never substitutes an available different win
     { limitGroupId: "codex", window: "secondary" },
     0,
   );
-  assert.match(missing, /Window unavailable/);
+  assert.match(missing, /Allowance unavailable/);
   assert.doesNotMatch(missing, /80%|0%/);
   assert.match(
     renderNeo(state, { limitGroupId: "gone", window: "automatic" }, 0),
